@@ -4,7 +4,7 @@
 
 [项目 README](../../README.md) · [六模块总览](../../openspec/changes/README.md)
 
-本批交付仅为需求、架构和 OpenSpec 规划。不存在已完成的业务页面、API、数据表或 AI 服务。所有 change 的实现任务保持未勾选；OpenSpec artifact 的 done 仅代表文档存在。
+本目录为总体设计与规划索引。P1 用户注册、登录与身份认证已实现，详见 [P1 开发验收](../development/p1-auth.md)；文献库业务、PDF及其他成员模块仍待开发。OpenSpec artifact 的 done 仅代表文档存在，具体开发进度以 tasks 为准。
 
 ## 公共文档
 
@@ -23,7 +23,7 @@
 
 | Change | 负责人 | 规格能力 | 实现状态 |
 | --- | --- | --- | --- |
-| [01-literature-management](../../openspec/changes/01-literature-management/proposal.md) | Jensen Zhang | user-auth、literature-library | 待开发；第一阶段 |
+| [01-literature-management](../../openspec/changes/01-literature-management/proposal.md) | Jensen Zhang | user-auth、literature-library | P1 认证已完成；P2 待开发 |
 | [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | 待开发；第二阶段 |
 | [03-translation](../../openspec/changes/03-translation/proposal.md) | Siguo Liu | literature-translation | 待实现 |
 | [04-literature-notes](../../openspec/changes/04-literature-notes/proposal.md) | Siguo Liu | literature-notes | 待实现 |

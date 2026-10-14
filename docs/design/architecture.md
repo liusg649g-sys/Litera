@@ -1,5 +1,7 @@
 # 系统总体架构
 
+当前P1已实现认证相关前后端、users/sessions迁移及三服务配置；本文其余模块描述为后续目标设计。实际实现与验证见 [P1开发记录](../development/p1-auth.md)。
+
 ## B/S 技术链路
 
 浏览器运行 Vue 3 + TypeScript + Element Plus；PDF.js 渲染经认证接口获取的 PDF。Nginx 提供前端静态资源与 SPA 路由回退，将 `/api/v1/` 转发到 FastAPI。FastAPI 校验普通用户身份、资源归属和输入，经数据库访问层读写 MySQL，通过私有文件服务访问本地 PDF 存储。

@@ -1,0 +1,63 @@
+name: litera
+services:
+  db:
+    image: ${IMAGE_REGISTRY:-public.ecr.aws/docker/library}/mysql:8.4
+    environment:
+      MYSQL_DATABASE: litera
+      MYSQL_USER: litera
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Run python scripts/init_env.py first}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run python scripts/init_env.py first}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/mysql-init.sql:/docker-entrypoint-initdb.d/01-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+  api:
+    build:
+      context: ./backend
+      args:
+        PYTHON_IMAGE: ${IMAGE_REGISTRY:-public.ecr.aws/docker/library}/python:3.12-slim
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: mysql+pymysql://litera:${MYSQL_PASSWORD}@db:3306/litera?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://litera:${MYSQL_PASSWORD}@db:3306/litera_test?charset=utf8mb4
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      SESSION_SECRET: ${SESSION_SECRET:?Run python scripts/init_env.py first}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-86400}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-8}
+      AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-20}
+      AUTH_RATE_WINDOW_SECONDS: ${AUTH_RATE_WINDOW_SECONDS:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  nginx:
+    build:
+      context: ./frontend
+      args:
+        NODE_IMAGE: ${IMAGE_REGISTRY:-public.ecr.aws/docker/library}/node:24-alpine
+        NGINX_IMAGE: ${IMAGE_REGISTRY:-public.ecr.aws/docker/library}/nginx:1.28-alpine
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  mysql_data:

@@ -1,6 +1,6 @@
 # 统一 API 与跨模块契约 v1（规划）
 
-本文件定义目标契约，不表示接口已存在。01/02 按页面阶段实现真实接口；03–06 为待实现接口。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（建议 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
+本文件为统一API契约。P1已实现auth注册/登录/会话/退出、users/me读取/显示名称修改及health；其余文献/阅读/03–06接口仍为规划，详见 [P1记录](../development/p1-auth.md)。01/02按页面阶段实现真实接口；03–06为待实现接口。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（建议 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
 
 ## 通用约定
 

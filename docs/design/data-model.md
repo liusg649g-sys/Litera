@@ -1,5 +1,7 @@
 # 数据模型说明（概念/逻辑模型，不执行 DDL）
 
+当前P1已实现认证相关前后端、users/sessions迁移及三服务配置；本文其余模块描述为后续目标设计。实际实现与验证见 [P1开发记录](../development/p1-auth.md)。
+
 ## 统一约定
 
 MySQL，utf8mb4；ID 建议 UUID 字符串；时间用 UTC DATETIME(6)，API 转 ISO 8601。实体共有 id、createdAt、updatedAt；可并发修改实体增加 version。所有私有业务实体有 ownerId；由会话用户赋值。关联同时验证双方 owner 一致，索引/外键不能替代业务权限校验。

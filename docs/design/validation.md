@@ -1,6 +1,8 @@
-# 规划校验记录
+# 初始总体规划校验记录
 
 校验日：2026-10-14，OpenSpec CLI 1.14.1，schema=spec-driven，repo-local root=`D:\PKU\Projects\reacher-hub`。
+
+本文保留初始规划时的计数；当前P1已实现，最新开发与测试记录见 [P1验收](../development/p1-auth.md)。
 
 ## 官方校验
 

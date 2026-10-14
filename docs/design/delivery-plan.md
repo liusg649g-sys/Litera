@@ -2,7 +2,7 @@
 
 ## 当前进度
 
-本批完成目标是六模块规划与公共设计。业务开发进度为 0；所有 tasks 为后续实现/验证清单。03–06 均标为待实现，不用“规格完成”替代“模块完成”。日期只记录规划日 2026-10-14，阶段排期待团队确认课程截止日。
+当前P1注册登录与身份认证已实现并完成本地及真实浏览器验证，详见 [P1验收记录](../development/p1-auth.md)。01任务1.x完成，P2/P3及03–06仍待开发；不将总体规划完成等同于全部模块开发完成。后续排期待用户体验及课程安排。
 
 | 顺序 | 负责人/change | 启动条件 | 退出门槛 |
 | --- | --- | --- | --- |
@@ -34,6 +34,6 @@ P3：PDF.js 渲染有文本层；翻页/缩放/目录/全文搜索与选中文�
 
 ## 规划与开发状态分离
 
-规划检查：OpenSpec 1.14.1 `openspec validate --all --strict --json`；每 change `openspec status --change <name>` 应显示 4/4 artifacts 完成；tasks 中完成数必须为 0。这不证明任何业务场景已通过测试。
+规划检查：OpenSpec 1.14.1 `openspec validate --all --strict --json`；每 change `openspec status --change <name>` 应显示 4/4 artifacts 完成；当前01的P1任务按实际验收完成，其余阶段仍未勾选。这不证明任何业务场景已通过测试。
 
 启动示例（后续用户明确指令）：`$openspec-apply-change 01-literature-management，仅执行 P1 / tasks 1.x，完成后停止验收`。本批交付后停止，不运行 apply、迁移、构建或容器。各阶段完成后才进行规格同步/归档及下一阶段实施。

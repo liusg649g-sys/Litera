@@ -1,0 +1,26 @@
+:root {
+  /* Shared Litera design tokens: all brand surfaces reference these values. */
+  --litera-primary: #9B0000;
+  --litera-primary-hover: #B82A2A;
+  --litera-primary-active: #750000;
+  --litera-primary-soft: #FFF4F4;
+  --litera-page: #F7F8FA;
+  --litera-card: #FFFFFF;
+  --litera-text: #303133;
+  --litera-muted: #737982;
+  --litera-border: #E5E7EB;
+  --brand-primary: var(--litera-primary);
+  --page-bg: var(--litera-page);
+  --surface: var(--litera-card);
+
+  /* Keep Element Plus error/success/warning tokens unchanged. */
+  --el-color-primary: var(--litera-primary);
+  --el-color-primary-light-3: var(--litera-primary-hover);
+  --el-color-primary-dark-2: var(--litera-primary-active);
+  --el-color-primary-light-5: color-mix(in srgb, var(--litera-primary), white 50%);
+  --el-color-primary-light-7: color-mix(in srgb, var(--litera-primary), white 70%);
+  --el-color-primary-light-8: color-mix(in srgb, var(--litera-primary), white 80%);
+  --el-color-primary-light-9: var(--litera-primary-soft);
+  --el-border-radius-base: 6px;
+  --el-font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}

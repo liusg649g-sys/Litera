@@ -2,7 +2,7 @@
 
 ## Context
 
-动机见 proposal.md。仓库 frontend/backend/storage 为空，主规格为空；无历史数据需迁移兼容。技术路线、目录、部署与 Git 约定见 [总体架构](../../../docs/design/architecture.md)。负责人Jensen Zhang，本模块分 P1 登录页、P2 文献库；本次不实施。
+动机见 proposal.md。规划时仓库 frontend/backend/storage 为空，主规格为空；无历史数据需迁移兼容。技术路线、目录、部署与 Git 约定见 [总体架构](../../../docs/design/architecture.md)。负责人Jensen Zhang，本模块分 P1 登录页、P2 文献库；P1已实现，P2未开始，见 [阶段验收](../../../docs/development/p1-auth.md)。
 
 ## Goals / Non-Goals
 
@@ -33,3 +33,12 @@
 ## Open Questions
 
 公共 decisions.md 的 Q1/Q2/Q7：限制数值、图标素材、排期/容量可在对应阶段配置前确定，不改变 API 结构或任务边界。D1–D5 为本批已提出的设计方案，评审若改动则先更新规约。
+
+
+## P1 登录注册优化决定
+
+采用Element Plus原生validateField和submit校验：关闭规则变化自动校验及输入组件默认校验事件，只在非空失焦/提交时验证；修改清除对应提示，标签切换nextTick后clearValidate。保持现有字段与认证安全契约。
+
+主题集中于frontend/src/theme.css，主色#9B0000、hover#B82A2A、active#750000，Logo内联SVG继承Token。仅映射Element Plus品牌变量，不覆盖状态色；正文样式引用变量，其他模块可直接复用。
+
+保留原有分栏；缩减卡片/表单间距、预留字段错误空间，注册保留min-height，登录使用内容高度及顺序布局，不拉伸居中表单；允许切换时卡片按内容改变高度，窄屏自然滚动。用本地Vite隔离UI测试覆盖布局及触发时机，既有8080服务另测真实认证；不构建或启动Docker、不修改后端认证、不提交或推送。
