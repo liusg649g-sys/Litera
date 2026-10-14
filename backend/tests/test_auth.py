@@ -14,8 +14,8 @@ def register(client, email="reader@example.com", name="Reader"):
 def login(client, email="reader@example.com"):
     return client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
 
-def test_migration_only_creates_auth_tables(client):
-    assert set(inspect(engine).get_table_names()) == {"users", "sessions", "alembic_version"}
+def test_migration_creates_only_auth_and_p2a_tables(client):
+    assert set(inspect(engine).get_table_names()) == {"users", "sessions", "documents", "document_files", "alembic_version", "folders", "tags", "document_tags", "reading_progress", "cleanup_jobs"}
     assert client.get("/api/v1/health").json() == {"status": "ok"}
 
 def test_register_hashes_password_and_does_not_auto_login(client):

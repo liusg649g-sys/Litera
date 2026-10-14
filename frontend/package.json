@@ -8,9 +8,11 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:library": "playwright test --config=playwright.library.config.ts"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
     "element-plus": "2.14.7",
     "vue": "3.5.44",
     "vue-router": "4.6.4"

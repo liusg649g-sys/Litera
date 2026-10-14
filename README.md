@@ -6,9 +6,15 @@
 
 ## 当前进度
 
-第一轮 P1 已实现普通用户注册、登录、退出、会话维护和个人资料。登录成功进入 `/library`，该页仅显示“文献库正在准备中”。01-literature-management 的 P1 任务已完成；文献管理业务、PDF 阅读和03–06模块仍待实现。本轮没有管理员端。
+P1/P2-A及P2-B功能和UI优化已完成，用户已确认Change 01实际功能/UI验收通过。个人文件夹、标签、组合检索、最近阅读、回收站、恢复和永久删除均接入真实API；失败清理状态持久化并可查询/重试。仍使用浏览器PDF预览，02–06及管理员未实现。默认50 MiB上传、240px可调侧栏、52px品牌栏和可调宽信息面板保留。当前交接与测试证据边界见[HANDOFF](HANDOFF.md)，历史实现见[P2-B记录](docs/development/p2-b.md)。
 
 开发及测试详情见 [P1 验收记录](docs/development/p1-auth.md)。Docker 拉取、构建和启动由使用者手动执行，开发过程中不自动提交或推送代码。
+
+P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0003_library，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
+
+已验收的文献库布局沿用[P2-A UI记录](docs/development/p2-a-ui.md)：六列单行省略/浅色Tooltip、阅读/详情/更多菜单、右侧信息与编辑面板和局部草稿确认、右下角5秒通知。P2-B仅补充真实分类、筛选、历史及回收站交互，参考06–13截图。
+
+P2-B局部交互优化见[本轮UI记录](docs/development/p2-b-ui.md)：独立快捷移动/标签窗口、统一Element Plus下拉、300ms即时检索和真实上下文空状态；未改后端或数据库，完整分类编辑与既有生命周期保留。
 
 ## Windows CMD 启动
 
@@ -50,9 +56,11 @@ docker compose logs --tail=100 db
 docker compose down
 ```
 
-`down` 保留 MySQL 命名卷及注册数据；`down -v` 会删除数据，请勿作为普通重启操作。
+`down` 保留 MySQL 和 PDF 命名卷；`down -v` 会删除数据，请勿作为普通重启操作。
 
 ## 配置
+
+P2-A增加`MAX_UPLOAD_BYTES`（默认52428800，50 MiB）与`PDF_STORAGE_ROOT`（Compose默认/data/pdfs）。可在已有.env手动追加配置，重建后生效，不需重新生成秘密。容器私有卷挂载路径跟随PDF_STORAGE_ROOT；更改路径前保持同一命名卷并备份。Nginx流式代理，API限制请求流和实际PDF大小，前端从GET /api/v1/library/config读取真实上限。
 
 `.env.example` 提供非秘密默认值，`.env` 保存实际本地配置，不应提交。默认页面端口8080、会话24小时、密码8–128字符、注册/登录每IP合计20次/60秒；当前限流是单API进程内计数。
 
@@ -64,12 +72,15 @@ docker compose down
 
 ## 测试
 
+无需Docker的P2-A/P2-B真实浏览器测试（先安装backend/.venv依赖和frontend依赖及Chromium）：在frontend目录运行`npm run test:library`，自动启动127.0.0.1:8001临时SQLite API与5175 Vite，完成后停止；不使用模拟文献成功数据，不修改开发数据库。测试配置目前按Windows项目路径运行。认证UI默认5174，端口占用可先`set LITERA_UI_PORT=5176`。测试产物分别存test-results/library和test-results/auth；截图不提交。
+
 本地后端测试（独立临时SQLite库，走真实迁移，不触碰开发MySQL数据）：
 
 ```cmd
 cd /d D:\PKU\Projects\Litera\backend
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
+set TEST_DATABASE_URL=
 .venv\Scripts\python -m pytest -q
 ```
 
@@ -80,7 +91,7 @@ cd /d D:\PKU\Projects\Litera
 docker compose exec -T api python -m pytest -q
 ```
 
-测试代码校验数据库名并拒绝对非测试MySQL库清理数据。初次MySQL初始化会创建测试库；本轮该命令已验证22项通过，使用独立测试库。
+测试代码校验数据库名并拒绝对非测试MySQL库清理数据。初次MySQL初始化会创建测试库；旧卷缺少测试库时见[P2-B记录](docs/development/p2-b.md)。用户功能/UI验收已通过；本次文档收尾未执行Docker/MySQL测试，也未收到专项pytest日志，不能将历史SQLite或P1结果当作最新MySQL测试证据。
 
 前端构建、基础测试与浏览器验收（需要 Node 24+；端到端测试需要已启动的服务）：
 
@@ -121,7 +132,7 @@ npm run dev -- --port 5173 --strictPort
 
 ## 仓库与文档
 
-`frontend/` 为前端，`backend/` 为认证后端与迁移，`scripts/` 为本地配置/测试库初始化脚本，`docs/design/` 为总体设计，`docs/development/` 为阶段验收记录，`openspec/changes/` 为六模块规划。前后端依赖分别锁定于package-lock.json和requirements.txt。
+`frontend/` 为前端，`backend/` 为认证、文献管理后端与迁移，`scripts/` 为本地配置/测试库初始化脚本，`docs/design/` 为总体设计，`docs/development/` 为阶段验收记录，`openspec/changes/` 为六模块规划。前后端依赖分别锁定于package-lock.json和requirements.txt。
 
 - [新会话开发交接](HANDOFF.md)
 - [六模块总览](openspec/changes/README.md)
@@ -130,7 +141,7 @@ npm run dev -- --port 5173 --strictPort
 - [设计决策](docs/design/decisions.md)
 - [规划校验记录](docs/design/validation.md)
 
-后续按注册登录 → 文献库 → PDF 阅读器逐阶段推进。下一轮任务为“文献库主界面开发”，本次未开始；新会话按用户指令启动。管理员、跨用户共享等扩展另立change。
+Change 01已通过用户功能/UI验收；下一次会话经用户明确启动后按P3-A基础阅读、P3-B标注/进度、P3-C工作区与扩展接口开发02。当前/reader/:documentId仍跳回文献详情并说明待实现，不是PDF.js阅读器。管理员、跨用户共享等扩展另立change。
 
 ## P1 页面优化
 
@@ -138,4 +149,4 @@ npm run dev -- --port 5173 --strictPort
 
 仅验证最新UI、不启动Docker：在frontend目录运行 `npm run test:e2e -- --project=auth-ui`。Docker中的前端更新仍须用户手动执行项目根目录的 `docker compose up -d --build --wait`，然后刷新浏览器。
 
-本轮UI修改和测试证据见 [P1 UI验收](docs/development/p1-ui.md)。最近前端构建通过，Vitest 7项、auth-ui 10项通过；六个OpenSpec严格校验通过。用户已认可注册页、文献库占位页和个人资料页；当前登录布局已完成修复，下一轮文献库业务尚未开始。
+历史测试：P2-B后端SQLite73/73、完整真实HTTP文献库Playwright21/21、auth-ui10/10；最新标签布局修复构建通过、Vitest10/10及定向浏览器3/3，全量套件新增用例后未重跑。证据见[P2-B](docs/development/p2-b.md)和[P2-B UI](docs/development/p2-b-ui.md)。本次仅文档与关键接入代码核对，重新执行OpenSpec严格校验；未重跑业务测试，未执行Docker。

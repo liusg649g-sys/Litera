@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
+from pathlib import Path
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,8 @@ class Settings(BaseSettings):
     password_min_length: int = Field(default=8, ge=8, le=128)
     auth_rate_limit: int = Field(default=20, ge=1)
     auth_rate_window_seconds: int = Field(default=60, ge=1)
+    pdf_storage_root: Path = Path("storage/pdfs")
+    max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
 
     @model_validator(mode="after")
     def validate_production(self):

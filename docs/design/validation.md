@@ -1,8 +1,17 @@
 # 初始总体规划校验记录
 
-校验日：2026-10-14，OpenSpec CLI 1.14.1，schema=spec-driven，repo-local root=`D:\PKU\Projects\reacher-hub`。
+初始校验日：2026-10-14，OpenSpec CLI 1.14.1，schema=spec-driven，repo-local root=`D:\PKU\Projects\Litera`。
 
-本文保留初始规划时的计数；当前P1已实现，最新开发与测试记录见 [P1验收](../development/p1-auth.md)。
+本文下文保留初始规划时的计数与环境历史，不是当前开发状态。01现已通过用户功能/UI验收，最新开发与测试记录见[交接](../../HANDOFF.md)。
+
+## 2026-10-15 收尾核对
+
+- 范围仅文档与02关键依赖：会话/CSRF、文献与PDF内容/Range、打开记录、路由/公共组件，以及必要迁移/Compose配置接入信息；没有全面代码审查。
+- 01为33/34：用户功能/UI验收已确认，5.B1保留用户勾选，5.A1只剩专项MySQL日志补证；02–06实现任务保持0/12、0/6、0/6、0/7、0/8。
+- 主规格仍为空，未执行sync或archive；功能验收条件已满足，完整任务追踪仍待5.A1补证。
+- 本次执行OpenSpec 1.14.1的 `openspec validate --all --strict`：6 passed、0 failed；最终Markdown检查24个文件、86个本地链接，缺失0。HANDOFF为134行，git diff --check通过（仅换行转换提示）；不把结构校验当作业务测试。
+- 初次沙箱校验因目录realpath EPERM失败；同一只读命令在获准本机权限下重新执行通过，没有修改规约格式绕过检查。
+- 没有重跑前后端业务测试、Docker/MySQL或浏览器验收；历史证据与用户验收分开记录，02依赖缺口见其design。
 
 ## 官方校验
 

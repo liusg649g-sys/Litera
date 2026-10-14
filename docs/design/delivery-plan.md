@@ -2,13 +2,18 @@
 
 ## 当前进度
 
-当前P1注册登录与身份认证已实现并完成本地及真实浏览器验证，详见 [P1验收记录](../development/p1-auth.md)。01任务1.x完成，P2/P3及03–06仍待开发；不将总体规划完成等同于全部模块开发完成。后续排期待用户体验及课程安排。
+01按P1、P2-A、P2-B分轮实现，分类/组合检索/最近阅读/回收站及局部UI优化均已交付。用户于2026-10-15本次收尾明确确认实际功能/UI验收通过；SQLite+HTTP与专项MySQL证据分开记录，见[交接](../../HANDOFF.md)。不自动构建或启动Docker，不commit/push。
+
+P1/P2-A/P2-B代码、UI及用户功能验收已完成；专项MySQL自动化日志尚未提供，任务5.A1保留补证。P3及03–06仍待开发，不将总体规划完成等同于全部模块开发完成。
 
 | 顺序 | 负责人/change | 启动条件 | 退出门槛 |
 | --- | --- | --- | --- |
 | P1 注册与登录 | Jensen Zhang/01 | 用户评审设计后明确要求开始 P1 | 真实注册/登录/退出及资料、权限测试通过 |
 | P2 文献库 | Jensen Zhang/01 | P1 验收通过，开始 P2 | 真实 PDF/文件夹/标签/检索/回收站闭环 |
 | P3 PDF 阅读器 | Jensen Zhang/02 | P2 验收通过，开始 P3 | 在线阅读、标注/进度、布局和公共事件 |
+| P3-A 基础阅读 | Jensen Zhang/02 1.x | 下一会话明确启动02 | PDF.js/worker、真实内容、导航/搜索/选区与上下文 |
+| P3-B 标注与进度 | Jensen Zhang/02 2.x | P3-A阶段测试/验收 | 高亮/下划线/书签/批注CRUD、坐标恢复及进度CAS |
+| P3-C 工作区/扩展 | Jensen Zhang/02 3.x | P3-B阶段测试/验收 | 多文献标签、面板及公共事件、真实端到端 |
 | M3 翻译 | Siguo Liu/03 | 单独启动；01 权限可用、02 context 可联调 | 翻译/复制/失败路径；04 可用后保存笔记 |
 | M4 笔记 | Siguo Liu/04 | 单独启动；01 文献可用 | CRUD、来源关联、搜索与隔离 |
 | M5 提取 | Jialu Ma/05 | 单独启动；01 上传/状态契约可用 | 页文本/元数据候选、校正、异常、版本 |
@@ -34,6 +39,6 @@ P3：PDF.js 渲染有文本层；翻页/缩放/目录/全文搜索与选中文�
 
 ## 规划与开发状态分离
 
-规划检查：OpenSpec 1.14.1 `openspec validate --all --strict --json`；每 change `openspec status --change <name>` 应显示 4/4 artifacts 完成；当前01的P1任务按实际验收完成，其余阶段仍未勾选。这不证明任何业务场景已通过测试。
+规划检查：OpenSpec 1.14.1 `openspec validate --all --strict`；每 change `openspec status --change <name>` 显示4/4 artifacts完成。01当前33/34，剩5.A1为专项MySQL补证，用户功能/UI验收已确认；02–06实现任务均未勾选。CLI结构校验不证明业务场景通过。
 
-启动示例（后续用户明确指令）：`$openspec-apply-change 01-literature-management，仅执行 P1 / tasks 1.x，完成后停止验收`。本批交付后停止，不运行 apply、迁移、构建或容器。各阶段完成后才进行规格同步/归档及下一阶段实施。
+下一会话启动示例：`$openspec-apply-change 02-pdf-reader，仅执行P3-A / tasks 1.x，完成后停止验收`。本次只交接，不执行02；01归档须用户明确要求，并核对补证项与主规格同步。各阶段完成后再进入下一阶段。

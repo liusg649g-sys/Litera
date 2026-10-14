@@ -18,9 +18,11 @@ from .database import get_db
 from .models import LoginSession, User
 from .schemas import LoginInput, ProfileInput, RegisterInput, user_dto
 from .security import csrf_token, dummy_hash, password_hasher, token_hash, verify_password
+from .documents import UploadLimitMiddleware, create_document_router
 
 settings = get_settings()
 app = FastAPI(title="Litera API", version="0.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+app.add_middleware(UploadLimitMiddleware)
 COOKIE_NAME = "litera_session"
 auth_attempts = defaultdict(deque)
 auth_attempts_lock = Lock()
@@ -45,9 +47,13 @@ async def request_context(request: Request, call_next):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error(request: Request, exc):
+    if getattr(request.state, "upload_too_large", False):
+        return JSONResponse(status_code=413, content={"error": {
+            "code": "UPLOAD_TOO_LARGE", "message": "上传请求超过大小限制",
+            "details": {"maxUploadBytes": settings.max_upload_bytes}}, "requestId": request.state.request_id})
     error = exc.detail if isinstance(exc.detail, dict) else {"code": "HTTP_ERROR", "message": str(exc.detail)}
     return JSONResponse(status_code=exc.status_code,
-                        content={"error": error, "requestId": request.state.request_id})
+                        content={"error": error, "requestId": request.state.request_id}, headers=exc.headers)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc):
@@ -163,3 +169,5 @@ def update_me(payload: ProfileInput, session: LoginSession = Depends(require_csr
     user.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     return user_dto(user)
+
+app.include_router(create_document_router(current_session, require_csrf))

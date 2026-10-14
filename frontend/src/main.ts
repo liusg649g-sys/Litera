@@ -1,8 +1,9 @@
 import { createApp } from 'vue'
-import { ElAlert, ElButton, ElForm, ElFormItem, ElInput } from 'element-plus'
+import { ElAlert, ElButton, ElForm, ElFormItem, ElInput, ElPagination, ElTooltip, ElDropdown, ElDropdownMenu, ElDropdownItem, ElSelect, ElOption, ElCheckbox, ElCheckboxGroup } from 'element-plus'
 import 'element-plus/dist/index.css'
 import './theme.css'
 import './style.css'
+import './library.css'
 import App from './App.vue'
 import { router } from './router'
 import { clearAuth } from './auth'
@@ -11,7 +12,7 @@ window.addEventListener('litera:unauthenticated', () => {
   if (router.currentRoute.value.meta.protected) void router.replace('/login')
 })
 const app = createApp(App).use(router)
-for (const component of [ElAlert, ElButton, ElForm, ElFormItem, ElInput]) app.component(component.name!, component)
+for (const component of [ElAlert, ElButton, ElForm, ElFormItem, ElInput, ElPagination, ElTooltip, ElDropdown, ElDropdownMenu, ElDropdownItem, ElSelect, ElOption, ElCheckbox, ElCheckboxGroup]) app.component(component.name!, component)
 app.mount('#app')
 
 const themeMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')

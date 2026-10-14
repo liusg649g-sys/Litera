@@ -1,9 +1,10 @@
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message) }
+  constructor(public status: number, public code: string, message: string,
+    public details?: Record<string, unknown>, public requestId?: string) { super(message) }
 }
 export async function api<T>(path: string, options: RequestInit = {}, csrfToken?: string): Promise<T> {
   const headers = new Headers(options.headers)
-  if (options.body) headers.set('Content-Type', 'application/json')
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (csrfToken) headers.set('X-CSRF-Token', csrfToken)
   let response: Response
   try {
@@ -17,7 +18,7 @@ export async function api<T>(path: string, options: RequestInit = {}, csrfToken?
       window.dispatchEvent(new Event('litera:unauthenticated'))
     }
     throw new ApiError(response.status, data?.error?.code || 'REQUEST_FAILED',
-      data?.error?.message || '请求失败，请稍后重试')
+      data?.error?.message || '请求失败，请稍后重试', data?.error?.details, data?.requestId)
   }
   return response.status === 204 ? undefined as T : await response.json() as T
 }

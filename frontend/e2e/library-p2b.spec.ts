@@ -1,0 +1,215 @@
+import { test, expect } from '@playwright/test'
+import { pdf, session, upload, openLibrary, selectLibraryOption, setLibraryCheckbox } from './library-fixtures'
+import type { APIRequestContext, Page } from '@playwright/test'
+import { readdir, stat, rename, mkdir, rmdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve, basename } from 'node:path'
+const origin = 'http://127.0.0.1:5175'
+const headers = (token: string) => ({ Origin: origin, 'X-CSRF-Token': token })
+async function category(request: APIRequestContext, token: string, kind: string, name: string) {
+  const result = await request.post('/api/v1/' + kind, { headers: headers(token), data: { name } })
+  expect(result.status()).toBe(201); return result.json()
+}
+async function menu(page: Page, name: string) {
+  await page.getByRole('button', { name: /更多操作/ }).first().click()
+  await page.getByRole('menuitem', { name, exact: true }).click()
+}
+test('real folder and tag CRUD, persisted classifications, deletion keeps documents', async ({ page }) => {
+  const token = await openLibrary(page)
+  await expect(page.getByText('暂无文件夹', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '新建文件夹', exact: true }).click()
+  await page.getByLabel('分类名称').fill('视觉研究')
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await page.getByRole('button', { name: '文件夹：视觉研究', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '视觉研究', exact: true })).toBeVisible()
+  await page.getByLabel('选择本地 PDF').setInputFiles({ name: '文件夹文献.pdf', mimeType: 'application/pdf', buffer: pdf('classification') })
+  await expect(page.getByRole('button', { name: '文件夹文献', exact: true })).toBeVisible()
+  const doc = (await (await page.request.get('/api/v1/documents')).json()).items[0]
+  const folder = (await (await page.request.get('/api/v1/folders')).json())[0]
+  expect(doc.folderId).toBe(folder.id)
+  await page.getByRole('button', { name: '标签管理', exact: true }).click()
+  await page.getByRole('button', { name: '新建标签', exact: true }).click()
+  await page.getByLabel('分类名称').fill('重要')
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.locator('.tag-management-row')).toContainText('重要')
+  await page.getByRole('button', { name: '我的文献', exact: true }).click()
+  await menu(page, '编辑题录信息')
+  await setLibraryCheckbox(page, '重要')
+  await page.getByRole('button', { name: '关闭文献信息', exact: true }).click()
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await page.getByRole('button', { name: '继续编辑', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: '重要', exact: true })).toBeChecked()
+  await page.getByRole('button', { name: '保存题录', exact: true }).click()
+  await page.getByRole('button', { name: '关闭文献信息', exact: true }).click()
+  await page.reload()
+  await expect(page.locator('.table-tags').getByRole('button', { name: '重要', exact: true })).toBeVisible()
+  await page.locator('.table-tags').getByRole('button', { name: '重要', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await page.getByRole('button', { name: '管理文件夹：视觉研究', exact: true }).click()
+  await page.getByRole('menuitem', { name: '重命名文件夹', exact: true }).click()
+  await page.getByLabel('分类名称').fill('新分类')
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await page.getByRole('button', { name: '管理文件夹：新分类', exact: true }).click()
+  await page.getByRole('menuitem', { name: '删除文件夹', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('PDF 和题录保留')
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByRole('button', { name: '文件夹文献', exact: true })).toBeVisible()
+  expect((await (await page.request.get('/api/v1/documents/' + doc.id)).json()).folderId).toBeNull()
+  await page.getByRole('button', { name: '标签管理', exact: true }).click()
+  await page.getByRole('button', { name: '重命名', exact: true }).click()
+  await page.getByLabel('分类名称').fill('保留')
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click()
+  await page.getByRole('button', { name: '删除标签', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click()
+  await expect(page.getByText('暂无标签，创建第一个标签开始整理文献。')).toBeVisible()
+  expect((await (await page.request.get('/api/v1/documents/' + doc.id)).json()).tags).toEqual([])
+  expect((await page.request.get('/api/v1/documents/' + doc.id + '/content')).status()).toBe(200)
+  expect(token).toBeTruthy()
+})
+
+test('combined real metadata filters, all tag matching, empty state and pagination', async ({ page }) => {
+  const token = await session(page.request)
+  const folder = await category(page.request, token, 'folders', '筛选分类')
+  const a = await category(page.request, token, 'tags', '图像'), b = await category(page.request, token, 'tags', '重点')
+  for (let i = 0; i < 23; i++) {
+    const doc = await (await upload(page.request, token, pdf('filter' + i), `检索${i}.pdf`)).json()
+    expect((await page.request.patch('/api/v1/documents/' + doc.id, { headers: headers(token), data: {
+      version: 1, authors: ['王小明'], year: i < 21 ? 2026 : 2019, folderId: folder.id, tagIds: i < 22 ? [a.id, b.id] : [a.id],
+    } })).status()).toBe(200)
+  }
+  await page.goto('/library?view=search')
+  await expect(page.getByRole('heading', { name: '文献检索', exact: true })).toBeVisible()
+  await page.getByLabel('检索关键词').fill('王小明')
+  await expect(page.getByRole('combobox', { name: '筛选文件夹', exact: true })).toBeEnabled()
+  await selectLibraryOption(page, '筛选文件夹', '筛选分类')
+  await page.getByLabel('起始年份').fill('2026')
+  await page.getByLabel('结束年份').fill('2026')
+  await page.getByRole('button', { name: '标签筛选', exact: true }).click()
+  await page.getByRole('checkbox', { name: '图像', exact: true }).check()
+  await page.getByRole('checkbox', { name: '重点', exact: true }).check()
+  await page.getByRole('heading', { name: '文献检索', exact: true }).click()
+  await page.getByRole('button', { name: '检索', exact: true }).click()
+  await expect(page.getByText('共 21 篇', { exact: true })).toBeVisible()
+  await expect(page.locator('tbody tr')).toHaveCount(20)
+  await page.getByRole('button', { name: 'Go to next page', exact: true }).click()
+  await expect(page.locator('tbody tr')).toHaveCount(1)
+  await selectLibraryOption(page, '排序字段', '标题')
+  await selectLibraryOption(page, '排序方向', '升序')
+  await expect(page.locator('tbody tr')).toHaveCount(20)
+  await page.getByLabel('检索关键词').fill('不存在的文献')
+  await page.getByRole('button', { name: '检索', exact: true }).click()
+  await expect(page.getByText('没有符合条件的文献')).toBeVisible()
+  await page.getByRole('button', { name: '清除筛选条件', exact: true }).click()
+  await expect(page.getByText('共 23 篇', { exact: true })).toBeVisible()
+  await page.screenshot({ path: 'test-results/p2b-search.png', fullPage: true })
+})
+
+test('actual PDF opens update recent history; trash restore and permanent deletion', async ({ page }) => {
+  const token = await openLibrary(page), bytes = pdf('lifecycle')
+  const doc = await (await upload(page.request, token, bytes, '生命周期.pdf')).json()
+  await page.reload()
+  const popupPromise = page.waitForEvent('popup')
+  const contentResponse = page.context().waitForEvent('response', response => response.url().endsWith('/documents/' + doc.id + '/content'))
+  await page.getByRole('link', { name: '阅读', exact: true }).click()
+  const popup = await popupPromise
+  const response = await contentResponse
+  expect(response.status()).toBe(200)
+  expect(response.headers()['content-type']).toContain('application/pdf')
+  await expect.poll(async () => (await (await page.request.get('/api/v1/reading-history')).json()).total).toBe(1)
+  await popup.close()
+  await page.getByRole('button', { name: '最近阅读', exact: true }).click()
+  await expect(page.getByRole('button', { name: '生命周期', exact: true })).toBeVisible()
+  const timestamp = (await (await page.request.get('/api/v1/documents/' + doc.id)).json()).lastReadAt
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  expect((await (await page.request.get('/api/v1/documents/' + doc.id)).json()).lastReadAt).toBe(timestamp)
+  await menu(page, '移入回收站')
+  await page.getByRole('dialog').getByRole('button', { name: '移入回收站', exact: true }).click()
+  await expect(page.getByText('暂无最近阅读记录')).toBeVisible()
+  await page.getByRole('button', { name: '回收站', exact: true }).click()
+  await expect(page.locator('.trash-table')).toContainText('生命周期')
+  expect((await page.request.get('/api/v1/documents/' + doc.id + '/content')).status()).toBe(404)
+  await page.getByRole('button', { name: '恢复', exact: true }).click()
+  await expect(page.getByText('回收站为空')).toBeVisible()
+  expect(await (await page.request.get('/api/v1/documents/' + doc.id + '/content')).body()).toEqual(bytes)
+  await page.getByRole('button', { name: '我的文献', exact: true }).click()
+  await menu(page, '移入回收站')
+  await page.getByRole('dialog').getByRole('button', { name: '移入回收站', exact: true }).click()
+  await page.getByRole('button', { name: '回收站', exact: true }).click()
+  await page.getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('不可撤销')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  expect((await page.request.get('/api/v1/trash/documents')).status()).toBe(200)
+  await page.getByRole('button', { name: '永久删除', exact: true }).click()
+  await page.route('**/api/v1/trash/documents/' + doc.id, route => route.request().method() === 'DELETE' ? route.abort() : route.continue())
+  await page.getByRole('dialog').getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('无法连接服务')
+  await page.unroute('**/api/v1/trash/documents/' + doc.id)
+  await page.getByRole('dialog').getByRole('button', { name: '永久删除', exact: true }).click()
+  await expect(page.getByText('回收站为空')).toBeVisible()
+  expect((await page.request.get('/api/v1/documents/' + doc.id)).status()).toBe(404)
+  expect((await upload(page.request, token, bytes)).status()).toBe(201)
+})
+
+test('two users have isolated folders, tags, trash and progress, narrow dialogs stay bounded', async ({ page, browser }) => {
+  const token = await session(page.request)
+  const folder = await category(page.request, token, 'folders', '私人文件夹')
+  const tag = await category(page.request, token, 'tags', '私人标签')
+  const doc = await (await upload(page.request, token, pdf('private'))).json()
+  await page.request.delete('/api/v1/documents/' + doc.id, { headers: headers(token) })
+  const other = await browser.newContext({ baseURL: origin })
+  const otherToken = await session(other.request)
+  expect(await (await other.request.get('/api/v1/folders')).json()).toEqual([])
+  expect(await (await other.request.get('/api/v1/tags')).json()).toEqual([])
+  expect((await (await other.request.get('/api/v1/trash/documents')).json()).total).toBe(0)
+  for (const [method, path, data] of [['patch', '/folders/' + folder.id, { name: '偷取' }], ['delete', '/tags/' + tag.id, undefined], ['post', '/trash/documents/' + doc.id + '/restore', undefined]] as const) {
+    expect((await other.request.fetch('/api/v1' + path, { method: method.toUpperCase(), headers: headers(otherToken), data })).status()).toBe(404)
+  }
+  await other.close()
+  await page.setViewportSize({ width: 360, height: 560 })
+  await page.goto('/library?view=trash')
+  await page.getByRole('button', { name: '永久删除', exact: true }).click()
+  const bounds = await page.locator('.el-dialog.library-action-dialog').boundingBox()
+  expect(bounds!.width).toBeLessThanOrEqual(328); expect(bounds!.x).toBeGreaterThanOrEqual(16)
+  await expect(page.locator('.el-overlay').last()).not.toHaveClass(/dialog-fade-enter/)
+  await page.screenshot({ path: 'test-results/p2b-trash-mobile.png', fullPage: true })
+  await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const buttonBounds = await page.getByRole('button', { name: '永久删除', exact: true }).boundingBox()
+  const listBounds = await page.locator('.document-list').boundingBox()
+  expect(buttonBounds!.x + buttonBounds!.width).toBeLessThanOrEqual(listBounds!.x + listBounds!.width)
+})
+
+test('real filesystem cleanup failure is queryable after refresh and UI retry completes', async ({ page }) => {
+  const token = await openLibrary(page), doc = await (await upload(page.request, token, pdf('cleanup-failure'), '清理重试.pdf')).json()
+  // Locate only this test server's disposable PDF, never development storage.
+  expect(doc.id).toMatch(/^[0-9a-f-]{36}$/)
+  let root = ''
+  for (const name of await readdir(tmpdir())) {
+    if (!name.startsWith('litera-browser-')) continue
+    const candidate = resolve(tmpdir(), name)
+    if (basename(candidate) !== name) continue
+    if (await stat(join(candidate, 'e2e.db')).catch(() => null) && await stat(join(candidate, 'pdfs', doc.id + '.pdf')).catch(() => null)) root = candidate
+  }
+  expect(root).toBeTruthy()
+  const path = join(root, 'pdfs', doc.id + '.pdf'), backup = path + '.test-backup'
+  await page.request.delete('/api/v1/documents/' + doc.id, { headers: headers(token) })
+  await rename(path, backup); await mkdir(path)
+  try {
+    await page.getByRole('button', { name: '回收站', exact: true }).click()
+    await page.getByRole('button', { name: '永久删除', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '永久删除', exact: true }).click()
+    await expect(page.getByText('清理未完成', { exact: true })).toBeVisible()
+    await expect(page.locator('.trash-table')).toContainText('清理失败')
+    await page.reload()
+    await expect(page.locator('.trash-table')).toContainText('清理失败')
+    const trash = (await (await page.request.get('/api/v1/trash/documents')).json()).items[0]
+    expect((await (await page.request.get('/api/v1/cleanup-jobs/' + trash.cleanupJob.jobId)).json()).status).toBe('failed')
+    await page.getByRole('button', { name: '查看状态', exact: true }).click()
+    await expect(page.getByText('清理失败，请检查存储权限或文件占用后重试')).toBeVisible()
+  } finally { await rmdir(path); await rename(backup, path) }
+  await page.getByRole('button', { name: '重试清理', exact: true }).click()
+  await expect(page.getByText('清理已完成', { exact: true })).toBeVisible()
+  await expect(page.getByText('回收站为空', { exact: true })).toBeVisible()
+  expect((await page.request.get('/api/v1/documents/' + doc.id + '/content')).status()).toBe(404)
+})

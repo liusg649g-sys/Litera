@@ -33,6 +33,10 @@ services:
       PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-8}
       AUTH_RATE_LIMIT: ${AUTH_RATE_LIMIT:-20}
       AUTH_RATE_WINDOW_SECONDS: ${AUTH_RATE_WINDOW_SECONDS:-60}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
+      PDF_STORAGE_ROOT: ${PDF_STORAGE_ROOT:-/data/pdfs}
+    volumes:
+      - pdf_data:${PDF_STORAGE_ROOT:-/data/pdfs}
     depends_on:
       db:
         condition: service_healthy
@@ -61,3 +65,4 @@ services:
     restart: unless-stopped
 volumes:
   mysql_data:
+  pdf_data:

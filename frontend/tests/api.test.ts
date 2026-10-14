@@ -2,6 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../src/api'
 beforeEach(() => vi.unstubAllGlobals())
 describe('HTTP contract', () => {
+  it('lets the browser set multipart boundaries and preserves conflict details', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
+      code: 'DUPLICATE_DOCUMENT', message: '重复', details: { existingDocumentId: 'doc', inTrash: false } }, requestId: 'trace' }), { status: 409 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const form = new FormData(); form.append('file', new File(['pdf'], 'test.pdf'))
+    await expect(api('/documents', { method: 'POST', body: form }, 'csrf')).rejects.toMatchObject({
+      details: { existingDocumentId: 'doc', inTrash: false }, requestId: 'trace' })
+    expect(fetchMock.mock.calls[0][1].headers.has('Content-Type')).toBe(false)
+    expect(fetchMock.mock.calls[0][1].headers.get('X-CSRF-Token')).toBe('csrf')
+  })
   it('sends session cookies and csrf headers for a write', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
