@@ -1,5 +1,6 @@
 """Disposable real API for P2-A Playwright; never reads the development .env."""
 import os
+import json
 import tempfile
 from pathlib import Path
 
@@ -12,6 +13,9 @@ with tempfile.TemporaryDirectory(prefix="litera-browser-") as temporary:
         PUBLIC_ORIGIN="http://127.0.0.1:5175", APP_ENV="test", COOKIE_SECURE="false",
         MAX_UPLOAD_BYTES="52428800", AUTH_RATE_LIMIT="200",
     )
+    manifest = root / "frontend" / "test-results" / "e2e-storage.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps({"database": str(Path(temporary) / "e2e.db"), "pdfRoot": str(Path(temporary) / "pdfs")}), encoding="utf-8")
     os.chdir(root / "backend")
     import sys
     sys.path.insert(0, str(root / "backend"))
@@ -24,3 +28,4 @@ with tempfile.TemporaryDirectory(prefix="litera-browser-") as temporary:
         uvicorn.run("app.main:app", host="127.0.0.1", port=8001, log_level="warning")
     finally:
         engine.dispose()
+        manifest.unlink(missing_ok=True)

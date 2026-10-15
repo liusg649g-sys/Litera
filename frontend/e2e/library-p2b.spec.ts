@@ -104,21 +104,16 @@ test('combined real metadata filters, all tag matching, empty state and paginati
   await page.screenshot({ path: 'test-results/p2b-search.png', fullPage: true })
 })
 
-test('actual PDF opens update recent history; trash restore and permanent deletion', async ({ page }) => {
+test('A1 first rendered page records recent reading; existing history API, trash restore and permanent deletion', async ({ page }) => {
   const token = await openLibrary(page), bytes = pdf('lifecycle')
   const doc = await (await upload(page.request, token, bytes, '生命周期.pdf')).json()
   await page.reload()
-  const popupPromise = page.waitForEvent('popup')
-  const contentResponse = page.context().waitForEvent('response', response => response.url().endsWith('/documents/' + doc.id + '/content'))
-  await page.getByRole('link', { name: '阅读', exact: true }).click()
-  const popup = await popupPromise
-  const response = await contentResponse
-  expect(response.status()).toBe(200)
-  expect(response.headers()['content-type']).toContain('application/pdf')
+  await page.locator('tbody .document-title').first().click()
+  await expect(page.locator('[data-page="1"]')).toHaveAttribute('data-status', '已渲染')
   await expect.poll(async () => (await (await page.request.get('/api/v1/reading-history')).json()).total).toBe(1)
-  await popup.close()
+  await page.getByRole('link', { name: '返回文献库', exact: true }).click()
   await page.getByRole('button', { name: '最近阅读', exact: true }).click()
-  await expect(page.getByRole('button', { name: '生命周期', exact: true })).toBeVisible()
+  await expect(page.locator('tbody').getByRole('button', { name: '生命周期', exact: true })).toBeVisible()
   const timestamp = (await (await page.request.get('/api/v1/documents/' + doc.id)).json()).lastReadAt
   await page.getByRole('button', { name: '刷新', exact: true }).click()
   expect((await (await page.request.get('/api/v1/documents/' + doc.id)).json()).lastReadAt).toBe(timestamp)

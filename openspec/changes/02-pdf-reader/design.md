@@ -2,57 +2,183 @@
 
 ## Context
 
-动机见 proposal.md；当前无阅读器实现。依赖 01 的已验收认证、PDF 内容、元数据和阅读记录。截图 3–5 已逐张分析，见 [UI 规范](../../../docs/design/ui-guidelines.md)。Jensen Zhang负责 P3，本批仅规划。
+2026-10-15 规约重审，负责人Jensen Zhang。01已通过用户功能/UI验收；02 P3-A1已完成开发/自动化并通过用户实际验收；本轮仅实施已授权P3-A2，B/C未开始。范围见[proposal](proposal.md)，行为见[pdf-reading](specs/pdf-reading/spec.md)及[reader-workspace](specs/reader-workspace/spec.md)，阶段见[tasks](tasks.md)。
+
+已逐张检查[15–25截图索引](../../../docs/references/xiaolvjing/reader-reference-index.md)：15整体、16标签菜单、17左导航、18视图、19缩放、23工具、24搜索、25列表。20–22仅说明未来扩展关系。用户要求优先于截图：不照搬视图自由组合、缩略图滑块、核心工具下拉、商业功能或品牌素材。
+
+### 开发前代码与接入缺口（历史快照）
+
+| 接入点 | 已有实现 | 02增量 |
+| --- | --- | --- |
+| 路由/入口 | router.ts的/reader/:documentId跳回库详情；LibraryPage.readDocument先recordOpen再打开content | 改受保护reader视图及阅读按钮；成功渲染后才记录阅读 |
+| 认证 | auth.ts/api.ts/main.ts与current_session/require_csrf已有Cookie/Origin/CSRF和401事件 | 复用全部机制；GET内容无需CSRF，写入必须携带；退出释放私有状态 |
+| PDF | documents.py校验owner/有效文献，200/单Range206，非法/多Range416；有Length/Range响应头，无HEAD/ETag/If-Range专用实现 | 同源URL加载，不用JSON api<T>读字节，不依赖不存在的缓存协议 |
+| 页数 | page_count当前null；requirements.txt已有pypdf==6.20.1，上传PdfReader校验非加密/至少一页但未存页数 | 优先复用现有库按需校验/填充真实物理页数，独立于05 |
+| 进度 | GET/PUT progress、reading-history已有；PUT {}写服务器lastReadAt及独立version；非空pageNumber/zoom503 | 扩展原表/接口；page_number nullable整数，zoom nullable VARCHAR(20)，DTO转float |
+| 生命周期 | 0001_auth→0002_documents→0003_library；无annotations/资产/导出 | 增量迁移，接原cleanup_jobs失败/重试链，不重建现表 |
+| UI/类型 | OverflowText、Element Plus Icons、#9B0000主题已有；ReaderContext等只有文档 | 复用组件与主题；建立真正公共类型/事件 |
+
+保留账号、文献ID、题录、原文件/存储键、旧进度/历史。01专项MySQL证据仍按历史交接跟踪，不以SQLite替代。
+
+### P3-A1实际实现（2026-10-15）
+
+1.1–1.6已实现，详见[开发记录](../../../docs/development/p3-a1.md)。pdfjs-dist精确6.4.299，真实module Worker同包Vite构建，CMap/标准字体/WASM/ICC同源开发/生产资源；共享PdfPage使用Canvas/TextLayer，ReaderPage负责三视图/页码/文献切换，ReaderPanel负责折叠/窄屏dialog，reader/state保留轻量会话状态及坐标适配。前述占位路由与浏览器预览已替换，后端内容/权限契约复用，无新增迁移或业务API。
+
+A1固定scale=1、左右框架初值左240/右320px，尚无交互缩放、调宽、缩略图/大纲/搜索或真实进度；库点击不提前recordOpen。三工具组及二级栏只提供开发中UI，未实现任何标注/插入/保存/导出或03–06业务。后文描述包含A2及之后的目标设计，不代表全部完成。
+
+### P3-A1交互补充（最新用户授权）
+
+本轮属于A1补充，保持6/36和六阶段结构，不启动A2。WorkspaceTabs由库/阅读器共同使用现有会话store，统一文献管理入口/单个关闭，路由活动态决定高亮；库中标题进阅读器，详情/原件下载直接展示，其余在更多。退出/换用户清标签，不缓存PDF实例；软删除当前列表文献移除对应共享标签。
+
+阅读组默认隐藏二级栏；布局变更保存页内锚点/滚动位置和页码，完成后恢复。搜索/列表/下载/导出为统一图标及浅色Tooltip。左导航复用库startPointerResize指针捕获，180–320px调宽且收起恢复，窄屏保留原生dialog。PdfPage只在进入可见范围且尚无完整帧时渲染，临时Canvas完成后再提交，远处仍释放；无中央渲染文字，失败保持原错误/重试。
+
+首个完整页面ready按本次文献加载generation触发一次原recordOpen→PUT progress {}，服务器写lastReadAt，不提交页码/缩放。离开/切文献等待已发写入完成（8秒超时），避免返回库查询竞态；失败显示可重试提示并记录状态码/code/requestId，手动重试只写真实接口。此项按用户本轮明确要求从A2提前补齐打开子集，不提前实现完整进度。
 
 ## Goals / Non-Goals
 
-**Goals:** 标注位置跨缩放/旋转稳定，标签状态隔离，提供可独立接入的阅读上下文与面板事件。
+**Goals:** 三种视图共享渲染；坐标跨缩放/旋转一致；保存/撤销/导出快照一致；多标签资源有界；公共接口松耦合。
 
-**Non-Goals:** 不编辑 PDF 文件正文，不实现翻译、笔记和问答；不把占位面板当作业务已完成。
+**Non-Goals:** 双页连续、布局与转换自由组合、缩略图独立缩放、独立书签工具、OCR、PDF正文改写、表单填写/测量/复杂绘图、证书数字签署、编辑任意第三方原生批注。03–06的UI、机器人、供应商调用与表全部不实现。原文件内置内容/批注正常展示；本模块批注列表与编辑仅管理Litera对象。
 
 ## Decisions
 
-1. PDF.js 文本层与自有标注覆盖层分离，通过 01 Cookie/Range 内容接口加载；相比改写 PDF 字节，覆盖层便于 CRUD、权限和原文件保真。
-2. 标注坐标持久化为未旋转页面的归一化矩形，多页选区按页数组；视图转换处理缩放/旋转/DPR。相对 CSS 像素更稳定；结构见 [API 契约](../../../docs/design/api-contracts.md)。书签为页级，批注支持页级/选区级。
-3. 阅读进度沿用 01 reading_progress 并 CAS 更新；总页数由轻量 PDF 结构读取校验，不依赖 05 自动正文解析。页码统一物理 1-based，避免 PDF 印刷页标签歧义。
-4. 工作区以 documentId 管理标签，contextRevision 标记快照；切换取消/丢弃旧请求。组件树、props/events、功能状态注册与布局状态见 UI 文档；使用公共 contracts 而非模块互相直接依赖业务实现。
-5. 右侧一次展开一个面板，AI 收起显示悬浮按钮；布局层不执行智能请求。狭窄视口切为抽屉，相比同时铺开三栏可保留 PDF 可读宽度。
-6. 题录修改复用 01 PATCH，所有 annotations/progress 访问复用 owner 过滤并验证嵌套文献关系。
+### 1. 布局与组件边界
+
+品牌导航（阅读器48px、文献库仍52px）和40px文献标签栏→40px主工具栏→40px独立二级工具栏→左导航/中央PDF/右辅助面板。主栏依次展示“阅读、批注、形状、插入”，默认阅读并隐藏二级栏，其他组显示对应二级工具；一个视图选择器，另有页码、缩放、搜索、列表、原件下载/带批注导出。窄屏四组允许横向滚动，不合并为一个下拉。
+
+左侧仅缩略图/原生大纲，默认240px、180–320px；右侧仅搜索/批注列表，默认360px、280–520px，一次一个。PDF目标最小480px，不足时面板变覆盖抽屉；折叠释放空间，键盘separator可调宽，抽屉有焦点约束/Escape/恢复。面板宽度为UI初值，可随验证调整。白灰与#9B0000，长标题用统一浅色Tooltip。
+
+ReaderWorkspace管理标签/上下文，ViewHost决定页面集合，共享PdfPage负责各层。A1先建轻量标签容器和文献切换生命周期；C2补齐批量关闭/溢出管理，不能等C才考虑B的数据隔离。没有翻译/笔记/AI占位面板或功能轨。
+
+### 2. PDF.js与渲染层
+
+A1选择与当前Vue/Vite/Node兼容的pdfjs-dist精确版本并锁定；本轮不选虚构版本、不安装。主线程、Worker、文本层样式、CMap/标准字体资源同包同版本，由Vite本地打包同源发布；不用CDN混配或静默fake worker。生产构建必须验证Worker与中英文字体。[PDF.js官方FAQ](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions)说明版本匹配和整篇Canvas内存成本。
+
+Canvas绘原页面；text layer提供可选文本/搜索范围；PDF原生annotation/link layer保留安全内部链接，限制不可信动作；自有交互层负责命中/选区/拖动，覆盖层绘Litera对象。选择工具与绘制工具显式互斥，不用对象层吞掉普通文本选择。所有层共用同一viewport（CropBox/UserUnit/固有Rotate+视图旋转）。禁止并发render到同一Canvas。
+
+同源content URL沿用HttpOnly Cookie。401接已有失效事件并取消/清空私有状态；404显示不可用；416取消Range后最多一次完整读取回退，仍失败显示重试/返回；损坏/不支持加密不记成功阅读。退出/切换的旧错误不能污染新文献。
+
+### 3. 三种视图及缩放
+
+ViewMode=continuous|single|spread，默认continuous。连续为纵向虚拟列表；single只显示一页；spread按(1,2)/(3,4)分组、翻页切组，末页奇数单独显示，无封面特例/纵向连续翻组。双页currentPage可为组内第二页；下一组按组首+2。连续当前页取视口中心最近页，双页取最后显式导航/交互页。目录/搜索/批注定位先设目标页/组，等待挂载再定位页内位置。
+
+切视图保留物理1-based页码和局部中心锚点；custom倍率保持，fit重新计算。双页窄屏允许容器横向滚动及组切换，不重叠、不生成第四模式。方向键仅PDF视口聚焦且非输入/编辑状态时生效，single/spread切页/组，continuous自然滚动。
+
+ZoomMode=custom|fit-width|fit-height。API倍率0.5–5（100%=1），UI50%–500%；预设50/75/100/125/150/200/300/400/500%，加减25个百分点，手输可小数；非数保留并提示，超界clamp并提示。自身尺寸=适应宽度，页面尺寸=适应高度。双页fit-width计算两页总宽+间距，fit-height按最大页高；fit也受0.5–5边界，无法容纳时滚动，不偷降至50%以下。
+
+Ctrl+wheel仅PDF容器的非passive监听接管；外部区域保留浏览器行为。手动缩放切custom，逆变换保存鼠标处PDF点（无鼠标取中心），更新后恢复屏幕位置；快速缩放只采纳最新generation，稳定后清晰重绘。ResizeObserver监听实际阅读容器，fit随面板/窗宽重算并避免循环布局。
+
+### 4. 坐标、加载与内存
+
+Canvas数量、内存/缓存/并发预算及长文压力样本等数值均为初始工程预算，可在开发中依据真实测试调整并记录原因，不作为固定产品约束或提前优化的验收门槛。优先实现正确、稳定的核心阅读功能；按需加载、必要取消/释放及基本资源保护仍须落实，分块绘制、复杂缓存/索引等优化仅在实测需要时采用。权限隔离、数据一致性和错误恢复要求保持不变，不能因预算调整或延后优化而削弱。
+
+持久坐标相对未旋转可见CropBox左上角，x/y/w/h在0–1且不越界；先逆viewport得PDF用户坐标，再处理CropBox偏移、UserUnit和顶/底原点。恢复/导出使用逆过程。多页文本为逐页矩形数组；笔迹为页内归一化点列；圆在PDF物理尺寸宽高相等。字体/笔宽存PDF point。DPR只影响Canvas backing store，不重复作用坐标。
+
+初始工程预算（实施时测量并记录机器/样本）：活动PDF实例最多1；页面Canvas可见+邻近最多6张、单张16M像素、总backing store192MiB；缩略图最多12张/16MiB。按宽×高×4估算，实测需要时降低DPR或采用分块绘制并明确清晰度状态，逻辑缩放仍可500%；禁止巨图无界分配。虚拟DOM保留尺寸占位。缩略图只渲染可见附近，无独立缩放滑块。
+
+文本按页提取（初始并发预算2），索引缓存初始预算32MiB；实测需要时采用有界分段扫描/淘汰，显示进度，结果不能静默截断。全文搜索不能要求全部Canvas完成。
+
+标签仅保留页码/锚点、zoomMode/zoom、viewMode、视图旋转、面板状态、草稿/队列等轻量信息，不长期保留整篇渲染。切换先递增generation并清选区、取消renderTask/文本索引/内容请求，等待取消后cleanup页面和销毁loadingTask/document；释放Canvas尺寸、ImageBitmap、ObjectURL、监听器及所选版本的Worker资源。旧响应仍以documentId+contextRevision+generation拒绝。保存回执单独按documentId+commandId/version归属，不能因切换丢弃真正成功的写入。
+
+### 5. 导航、文本搜索与进度
+
+原生Outline支持层级折叠/内部命名目标，无Outline空状态，坏目标给反馈。搜索真实PDF.js文本，规范化后保留字符→text layer范围映射，支持跨text item匹配。大小写可选，全词规则为拉丁字母数字词边界、其他文字按Unicode词分段（样本固定规则）；按物理页/页内顺序，上/下匹配可循环并显示序号。搜索高亮不是标注。空词清结果，无结果/全篇无文本分别提示，混合扫描仅搜索文本页，无OCR/05依赖。
+
+扩展原reading_progress新增nullable view_mode/zoom_mode，旧null默认continuous/fit-width；zoom继续存倍率字符串，对外number。旧PUT {}及仅含null的旧字段请求保持只记打开，不清状态；新状态写必须version（未读0），省略保持，新增设置显式null拒绝422。服务端用现有pypdf验证页数，不信任客户端pageCount，不改变题录version。
+
+加载先GET进度并恢复，首次目标页成功渲染后才CAS写当前页/设置及服务器lastReadAt，失败加载不更新；01库阅读按钮不再提前recordOpen。页/设置稳定1秒防抖、持续变化最多5秒一次，单文献串行保存；离开主动flush，失败提示/重试，不仅依赖unload。409读最新并保留本地待存状态，用户选载入服务端或基于新version明确保存本地，不能静默覆盖他端。首目标页成功时recordOpen=true，同事务更新documents/reading_progress.last_read_at；后续普通进度保存recordOpen=false不更新最近打开时间；GET/下载/导出不更新最近阅读。旧请求缺省recordOpen=true兼容。
+
+### 6. 对象类型与操作
+
+AnnotationType共14类：highlight、underline、squiggly、strikeout、comment、freeText、ink、marker、rectangle、circle、ellipse、signature、watermark、image。独立bookmark从旧规划移除，无旧标注数据需迁移。普通highlight绑定真实文本矩形，marker为半透明自由轨迹，可用于扫描页；ink是不透明手绘。下划线/波浪线/删除线同样必须真实选区。
+
+AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/color/version/时间，增加schemaVersion=1、geometry、style、assetId、zIndex。position为文本逐页锚点；geometry为box/points/anchor判别联合；服务端按type验证所有子页/边界，拒绝未知字段/任意HTML或JS。style白名单stroke/fill/opacity/lineWidth/fontSize等，#RRGGBB自定义与透明度分离。类型不可变，文本重选建新对象；box/path可合法移动缩放。
+
+| 对象 | 创建/定位 | 编辑及保存规则 |
+| --- | --- | --- |
+| 四种文本标记 | 选择真实文本创建多矩形 | 颜色/透明度可改；锚定原文不自由拖移；重建/删除可撤销 |
+| 注释 | 页点或文本选区，纯文本内容 | 页点可移动；文本锚点不拖移；保存内容/位置，与04笔记独立 |
+| 自由文本 | 点击/框选并输入纯文本 | 移动、改框、字号/颜色；换行按框，导出验证字体与可见内容 |
+| 手绘/荧光笔 | 指针采样页内点列 | 颜色/笔宽/透明度、整对象移动缩放；跨页拆对象，pointercancel不留半条 |
+| 矩形/圆/椭圆 | 页内拖动box | 边框、填充可无、线宽；圆等比，另两类自由缩放，限页内 |
+| 签名 | 手写确认后放置，或本地PNG/JPEG签名图 | 单页视觉对象，移动/等比缩放；无签名库/证书签章 |
+| 水印 | 输入纯文本，当前页预览确认 | 内容、角度、透明度、字号、box移动/尺寸；首版仅当前页，无全篇批量 |
+| 图片 | 本地PNG/JPEG真实解码后放置 | 保持纵横比移动/改大小，存本篇私有assetId；不接受远程URL/SVG/任意附件 |
+
+所有对象可选择、编辑属性、删除；橡皮擦为命中后删除整个Litera对象，不擦原PDF或局部分割笔迹。删除键只在对象选中且阅读器聚焦时生效。右侧列表覆盖本篇全部Litera对象及注释/插入，展示页/类型/摘要；按页位置或创建时间排序，按类型/颜色筛选，点击定位；编辑/删除同步列表与未保存状态。搜索/列表共用右区，分别保留本篇状态。
+
+### 7. 持久化、撤销与增量迁移
+
+新增annotations：owner/document外键、type/schemaVersion、position/geometry/style JSON、文本、asset_id/z_index/version/时间；索引owner/document/page及document/updated。新增document_reader_state保存annotationRevision，与题录/progress/contextRevision独立，每次对象变更同事务递增。reader_assets保存owner/document、私有键、mime/hash/像素尺寸/状态，只能受保护读取；命令收据保存幂等结果。不提前创建03–06表。
+
+初始限额：单资产5MiB/20M解码像素、本篇资产50MiB、单对象1MiB JSON/10k点/20k文本、本篇10k对象；超限413/422不截断，可配置后实测。未引用上传1小时清理；已删对象资产延迟24小时回收以支持撤销，导出快照引用加租约；到期后撤销涉及资产时明确不可恢复。新增资产清理须有幂等重试和启动扫描，不留下孤儿。
+
+写入commandId+baseRevision（文献标注集CAS）及现有对象version，服务端事务提交对象/集合版本/收据；超时按commandId查询/幂等重试。客户端每文献串行队列，区分草稿/发送中/确认/失败，1秒自动保存，显式保存flush。失败保留草稿；关闭提供保存并关闭/放弃未确认修改/取消。结果未知的在途命令先查收据，不直接当未写入放弃。
+
+每文献撤销栈最多100条语义命令，一次拖动一条；不含缩放/进度，不跨刷新保留（刷新恢复已存对象）。未发命令可移出队列；在途等结果；已确认undo发带最新CAS的补偿命令，删除可通过受控restore恢复原ID，redo用新commandId。新编辑清redo，失败暂停队列保留栈；409读取新版后由用户决定重放/放弃，重载或他端更新清失效历史并说明。Ctrl+Z/Y仅阅读器非input/textarea/contenteditable且无其他弹窗焦点时接管，输入框使用自身撤销。收据24小时，过期未知结果先重新核对集合，禁止盲重发。
+
+迁移分A2扩展原progress、B1标注集/收据、B2资产、C1必要导出作业；编号实施时串行协调。A2已新增0004_reader_progress，其余迁移留对应阶段。nullable/default兼容旧记录与PUT {}；隔离SQLite+真实MySQL验证从0003升级保留数据/约束。软删屏蔽所有访问但保留数据，恢复原ID；永久清理覆盖对象/资产/收据/导出临时产物，失败进入原cleanup_jobs可重试。写入/导出与清理以文献锁/不可恢复标记协调；回退禁reader并保留数据，不以downgrade删标注。
+
+### 8. 原件下载与带批注导出（C1再定具体方案）
+
+原件GET content?download=true，字节哈希与上传一致。导出包含本人本篇服务器已保存的全部14类对象；存在未保存内容时必须明确提示，先保存并确认成功，或由用户明确选择上次已保存版本。提交expectedAnnotationRevision，冲突409重新选择；一致性事务复制源fileHash、对象/样式/资产引用，后续编辑不改变快照，不能混多个版本。
+
+| 路线/技术候选 | 能力与取舍 | C1验证重点 |
+| --- | --- | --- |
+| 标准PDF Annotation+appearance | 文本四类可映射Highlight/Underline/Squiggly/StrikeOut；comment→Text、freeText→FreeText、ink/marker→Ink、矩形→Square、圆/椭圆→Circle；签名/图片可能Stamp | 外观流、QuadPoints、透明度、中文、Rotate/CropBox；标准对象存在不保证各阅读器都可编辑 |
+| 扁平化页内容叠加 | 文字/路径/形状/图像/水印写入页面，通常只能看；保留原页矢量/文本，避免整页截图 | 注释正文以可见说明框或带页码定位的附注页保留，不能只剩图标；字体/换行/Z序 |
+| 混合 | 常见对象原生且带外观，复杂对象扁平化 | 每类型能力矩阵，不漏对象或重复绘制 |
+| 现有pypdf | 优先评估复用注释写入/叠加PDF，不当万能渲染排版器；必要配ReportLab生成文字/矢量叠加 | 锁定版本真实API、外观/字体限制；新增库仅实施时评估 |
+| PyMuPDF备选 | 注释、绘制及烘焙能力候选 | 精确版本、平台包、字体及许可适配审阅后再选；目前未安装/未决定 |
+
+最低验收是第三方可见（含注释正文）；第三方继续编辑单列能力，不能承诺全部原生可编辑。C1技术验证后形成ADR，冻结扁平化/混合/原生路线、库与同步/异步协议。依据：[pypdf注释](https://pypdf.readthedocs.io/en/stable/user/adding-pdf-annotations.html)、[水印与叠加](https://pypdf.readthedocs.io/en/stable/user/add-watermark.html)、[PyMuPDF注释](https://pymupdf.readthedocs.io/en/latest/annot.html)、[bake](https://pymupdf.readthedocs.io/en/latest/document.html#Document.bake)、[许可说明](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)。能力资料不能替代锁定版本样本实验。PyMuPDF bake会丢失注释的隐藏正文等非外观数据，因此不能直接烘焙图标就声称已保留注释；必须先把正文做成可见说明或附注。
+
+服务端受保护写请求创建快照，输出到私有临时文件再受保护流式下载，避免整个产物长期BytesIO；库本身可能整文件驻留，仍须测峰值。初始预算并发1/进程、60秒超时、子进程512MiB、产物200MiB，可配置实测；超限/压缩炸弹/超时要终止工作进程并失败，不阻塞API、不泄漏半成品。成功发送结束、失败、取消、TTL1小时及启动扫描均清临时文件。若异步，C1冻结创建/状态/下载/取消API和审计，不借用03–06队列。
+
+创建/状态/下载逐次校验owner/有效文献/资产，软删及永久清理取消或屏蔽在途导出，流开始前复验；已发字节无法撤回，后续请求仍拒绝。浏览器退出不保证服务端停止，服务端必须超时清理。原存储只读，比较导出前后原hash；导出不记阅读。
+
+至少用Windows Edge PDF与Adobe Acrobat Reader两种独立阅读器逐类型验证可见性、中文/透明度/注释正文/图片和旋转位置，记录版本；不能只在Litera/PDF.js自测。自动结构检查/文本可读性/渲染对比补充人工跨阅读器证据。
+
+### 9. 公共上下文与成员边界
+
+ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|null、annotationId|null、contextRevision。物理1-based页码、坐标见本设计；有文本选区时ReaderContext.pageNumber取选区起始页，无选区时取当前阅读页，UI当前页状态另由视图保持。文献/页/选区变化递增工作区单调revision（含A→B→A），清空选区发空文本/null，销毁发context-cleared；context-change/selection-change/document-change发布真实快照，响应用documentId+revision验证。
+
+02拥有公共types、可取消订阅事件和导航adapter；03消费选区，04消费NoteDraft来源，05复用documentId/物理页契约，06消费上下文并提供带提取版本引用。引用导航只接受本人有效文献/页码，chunk/extractionVersion由真实来源模块验证，未接入返回unavailable，不制造chunk/调用服务。保留NoteDraft/Citation类型，不实现save-note UI或业务表；上下文不是权限凭证，后端每次校验owner/关联。PDF本地搜索不读05文本API。没有翻译面板/笔记页/AI聊天/机器人/模拟业务。
 
 ## Risks / Trade-offs
 
-- [不同页面尺寸/旋转导致标注错位] → 归一化转换与多尺寸/旋转样例验证。
-- [离开页面保存失败] → 未保存状态、关闭确认与显式重试，不只依赖 unload。
-- [多标签异步结果串文献] → 文献+contextRevision 校验，取消请求测试。
-- [扫描 PDF 无文本] → 明确搜索/选区不可用；OCR 不在本 change。
+- 坐标：混合页尺寸、CropBox偏移、90/180/270度、DPR1/2、多页选区往返测试，正常DPR覆盖误差目标≤1 CSS px。
+- PDF.js内部接口/字体/浏览器：锁版本并测生产Worker，不只开发服务。
+- 保存超时/他端冲突：集合CAS、幂等收据和补偿undo一起测，不能只前端数组undo。
+- 高倍Canvas/长文索引/图像/导出内存：有界预算与进程隔离，超限明确反馈、不静默漏页/对象。
+- 导出：中文字体、注释正文、复杂样式与许可是C1决策门槛，14类第三方可见才能通过。
+
+### 10. 验收样本与测量记录
+
+功能样本覆盖：1页、7页奇数；长文压力测试以1000页为初始样本建议（文件仍受现有50MiB上传配置限制）、中英文/无Outline/多级Outline、全扫描/混合文本、混合页尺寸/CropBox偏移/固有90度页、多页选区、损坏文件及损坏图像。长文可用无敏感内容生成样本，不提交用户私有文献。浏览器覆盖生产Chromium/Edge与Firefox，视口1366×768/1920×1080/390×844、DPR1/2；跨阅读器导出按第8节独立验证。记录CPU/内存/浏览器版本、首屏/搜索/切换耗时、JS heap/Canvas估算峰值及10标签反复切换关闭后基线。长文页数、标签数量及性能测量规模按开发阶段和真实测试调整；详细压力验证集中在C2，早期先验证核心正确性、稳定性及必要资源释放，不提前实施无实测依据的优化。根据结果调整预算和延迟门槛，不虚构通过结果。
 
 ## Migration Plan
 
-01 P2 验收后增加 annotations 和必要的进度字段/页数校验；接入真实 PDF.js → 标注/进度 → 工作区/公共事件，按 tasks 分组验证。回退禁用 reader 入口，保留新标注表和原 PDF；不为回退删除用户标注。
-
-## 2026-10-15 接入核对（仅交接，未开发）
-
-01已通过用户功能/UI验收；02仍为0/12，下一会话须获明确实施指令。下列为关键代码核对结果，详细契约见[API](../../../docs/design/api-contracts.md)、[模型](../../../docs/design/data-model.md)和[UI组件事件](../../../docs/design/ui-guidelines.md)。
-
-| 接入点 | 当前实际实现 | 02需要补齐 |
-| --- | --- | --- |
-| 文献入口 | frontend/src/router.ts的/reader/:documentId跳/library?documentId=…&readerPending=1；LibraryPage阅读按钮直接浏览器预览 | 创建受保护reader路由并对接阅读按钮，稳定复用documentId；保留独立下载 |
-| 身份与元数据 | auth.ts恢复会话；api.ts同源Cookie、CSRF、401事件；GET/PATCH documents沿用DocumentDTO/version | 复用会话与题录组件，阅读资源逐次owner/active校验；退出取消任务并清阅读状态 |
-| PDF内容 | GET /api/v1/documents/{id}/content，200完整或206单Range；Accept-Ranges、Content-Length、Content-Range、application/pdf；非法/多Range416 | 锁定pdfjs-dist及匹配worker，使用同源URL；验证真实Range加载，不能把JSON api<T>直接用作二进制读取 |
-| 内容边界 | 无HEAD、ETag/If-Range专用实现；API响应no-store；Nginx不静态暴露PDF | 不依赖尚未提供的HEAD/缓存协商；PDF.js错误适配401/404/416，401接现有会话失效机制；切换销毁旧loadingTask/worker |
-| 阅读记录 | library.py GET/PUT progress，PUT {}更新lastReadAt及独立version；pageNumber/zoom非null503 | 扩展原接口，服务端验证总页数；CAS保存/恢复页码和缩放，0为未读版本；不重复建表 |
-| 页数及缩放 | documents.page_count尚为null；reading_progress.zoom为nullable字符串，DTO转float | 轻量结构读取物理总页数，独立于05；明确缩放合法范围/写入转换，必要迁移只作增量并保留旧记录 |
-| 标注与生命周期 | 无annotations表/API；清理流程现只覆盖01关联 | 新增annotations与CRUD、嵌套权限/CAS；软删除保留、恢复原关联、永久清理覆盖标注，失败进入原清理状态/重试 |
-| 跨模块接口 | ReaderContext/SelectionPosition/NoteDraft/Citation及组件事件只有文档契约 | 落地公共类型/事件；documentId+contextRevision拒绝旧响应，禁止提前调用未实现03/04/06 |
-
-高亮/下划线存type、物理起始pageNumber、多页SelectionPosition[]及selectedText；矩形以未旋转页面左上角为原点归一化。书签可仅页码，批注可页级或选区级并有content；统一owner/document/version，原PDF字节不改。contextRevision、题录version、progress.version与annotation.version各自独立。
-
-扩展边界：context-change/selection-change输出真实选区文本、页码、位置及文献快照；panel-toggle/panel-resize仅布局；save-note输出NoteDraft，04未接入时禁用保存并说明；citation-navigate校验文献/物理页/提取版本，05/06未就绪时不制造chunk或引用。阅读选区不依赖自动提取，AI证据依赖05已发布页文本。
-
-实施顺序：P3-A锁定PDF.js/worker、真实内容与失败状态、导航/文本层/基础上下文；P3-B增量标注模型/API、覆盖层及进度CAS；P3-C多文献标签、面板/扩展事件、端到端与成员接入。各阶段先测再交付，全部任务本次保持未勾选。
-
-记录的待处理边界：当前浏览器预览先PUT打开记录再导航PDF，lastReadAt代表发起打开，不保证已渲染成功；02应明确成功加载与进度保存的记录时机。当前专项MySQL测试日志未提供，下一阶段记录真实MySQL迁移/约束证据，不以SQLite代替。
+按A1→A2→B1→B2→C1→C2实施，详见tasks；每阶段测试/文档随交付，完成后停止验收。P3-A1已通过用户实际验收，本轮只实施P3-A2的2.1–2.6，B1及之后24项保持未开始；A2增量迁移仅在隔离测试库验证，未执行实际业务库迁移、Compose、提交或归档，不修改03–06业务及历史测试记录。
 
 ## Open Questions
 
-01已采用Element Plus Icons及自有品牌；02面板初始宽度、缩放范围/保存节流、PDF.js版本与兼容样本文献在P3-A/B实施前确定，容量与性能样本见公共Q7。改变布局数值不改变面板事件或权限契约。
+用户已确认首版产品约束：水印仅作用于当前页；签名属于视觉对象，不涉及数字证书；撤销/重做历史不要求跨刷新保留，但已保存批注必须持久化；带批注PDF导出使用服务器已保存的版本快照，存在未保存内容时明确提示。这些约束不再是待确认项。
+
+工程决策留到对应阶段：A1锁PDF.js/浏览器样本；B2实测对象资产限额；C1凭全类型样本定导出库/协议/字体。用户可补充目标电脑、最大页数/并发、第三方阅读器版本；当前数字为待测工程预算，不是已达成性能。50%–500%、三种模式及无03–06 UI已确定。
+
+## P3-A2实施说明（2026-10-15）
+
+实现与测试范围见[开发记录](../../../docs/development/p3-a2.md)。所有A1布局/三视图/标签排序沿用，加入独立zoom/search/progress/context小模块；共享PdfPage接受逻辑scale/真实页尺寸，Canvas DPR预算与层坐标分开。显式跳页优先于异步fit锚点恢复，路由切换以loadedDocumentId+generation拒绝旧文献进度/选区/搜索。
+
+搜索逐页提取且不保留全篇文本索引；NFKC、空白统一，保留字符→text item/offset映射；全词按浏览器Intl.Segmenter('und', word) Unicode词边界（英文数字按整词，中文按词分段）。单页50万UTF-16字符、全文2万匹配为初始资源保护，超限明确报错要求更具体查询，不静默截断或假报完整结果；缓存/压力优化留C2。文本与缩略图处理generation取消，无法取消的单个PDF.js提取完成后丢弃旧结果。
+
+0004迁移只加view_mode/zoom_mode可空列；服务端用文献行锁及progress FOR UPDATE当前读避免MySQL重复读快照导致CAS失效。页数来自pypdf，缓存不改题录version。旧PUT {}及旧null pageNumber/zoom兼容，新状态写必须独立version。前端1秒防抖/5秒最大等待、串行CAS、8秒超时、离开flush；失败/冲突保留用户与文献隔离的sessionStorage设置草稿，用户明确处理后再离开；不存PDF/文本。ctx真实选区包含每页textQuote与归一化矩形，订阅/清理接口已落地，完整引用导航仍C2。
+
+本轮不实现任何持久批注/绘制/插入/导出或03–06业务；MySQL仅离线DDL编译，真实集成验收须用户单独补证。完成后等待本轮手动体验，不自动进入P3-B1。
+
+## P3-A2 UI补充（当前尺寸，2026-10-15）
+
+用户已在Docker实际体验核心功能并确认整体符合预期。本轮只做前端UI补充：阅读器品牌/标签/主栏/二级栏48/40/40/40px，阅读组隐藏二级栏，移除Footer；品牌20px和基础UI12px使用全局Token，标题层级保留，库品牌栏仍52px。PDF四周padding与页间gap统一12px，由同一常量驱动CSS/fit/导航偏移；fit扣两侧24px、双页加12px间距/取最高页，读取实际容器client尺寸，不重复扣导航高度。PDF.js全局.spread的3.5px双侧margin在本地集合覆盖为0，避免7px额外横向溢出，真正超宽仍滚动并使用白灰细滚动条。缩放/大纲采用同包SVG Chevron；鼠标操作不显示阅读区整圈焦点框，Tab进入保留局部focus-visible提示，输入框方向键不接管。
+
+本节覆盖前文历史尺寸/间距，不变更架构、后端、进度队列/接口及B/C边界。测试及手动验收见[UI补充记录](../../../docs/development/p3-a2-ux.md)。仍12/36，不新增阶段或任务编号。

@@ -94,6 +94,8 @@ class ReadingProgress(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     page_number: Mapped[int | None] = mapped_column(Integer)
     zoom: Mapped[str | None] = mapped_column(String(20))
+    view_mode: Mapped[str | None] = mapped_column(String(16))
+    zoom_mode: Mapped[str | None] = mapped_column(String(16))
     last_read_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
 

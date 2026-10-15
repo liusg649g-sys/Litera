@@ -222,5 +222,5 @@ def test_upgrade_from_auth_preserves_user(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with isolated.connect() as conn:
         assert conn.execute(text("SELECT display_name FROM users WHERE id='existing'")).scalar() == "Existing"
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003_library"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004_reader_progress"
     isolated.dispose()

@@ -1,5 +1,5 @@
 :root {
-  color: var(--litera-text); font-family: var(--el-font-family);
+  color: var(--litera-text); font-family: var(--el-font-family); font-size: var(--litera-font-size-ui);
   background: var(--litera-page); font-synthesis: none; text-rendering: optimizeLegibility;
 }
 * { box-sizing: border-box; }
@@ -8,7 +8,7 @@ a { color: var(--litera-primary); text-decoration: none; }
 a:hover { color: var(--litera-primary-hover); text-decoration: underline; }
 a:active { color: var(--litera-primary-active); }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--litera-primary); outline-offset: 4px; }
-.brand { display: flex; align-items: center; gap: 12px; font-size: 25px; font-weight: 650; letter-spacing: -.6px; color: var(--litera-text); }
+.brand { display: flex; align-items: center; gap: 12px; font-size: var(--litera-font-size-brand); font-weight: 650; letter-spacing: -.6px; color: var(--litera-text); }
 .brand-mark { flex-shrink: 0; color: var(--litera-primary); }
 .brand-mark-letter { fill: var(--litera-card); }
 .auth-layout { min-height: 100vh; display: flex; flex-direction: column; }

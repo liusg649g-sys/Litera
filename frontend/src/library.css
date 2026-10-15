@@ -1,4 +1,4 @@
-.library-workspace { min-height: 100vh; background: var(--litera-card); font-size: 14px; }
+.library-workspace { min-height: 100vh; background: var(--litera-card); font-size: var(--litera-font-size-ui); }
 .library-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .library-filters > input, .category-name-label input { border: 1px solid var(--litera-border); border-radius: 5px; padding: 8px 10px; font: inherit; min-width: 0; background: white; color: var(--litera-text); }
 .library-filters input[type=search] { width: 260px; max-width: 100%; }
@@ -59,7 +59,7 @@
 .row-actions button:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 600px) { .tag-management-row { flex-wrap: wrap; } .tag-management-row > div:last-child { flex-wrap: wrap; } }
 .library-header { height: 52px; min-height: 52px; padding: 0 20px; position: sticky; top: 0; z-index: 20; flex-wrap: nowrap; }
-.library-header .brand { font-size: 20px; gap: 9px; }
+.library-header .brand { gap: 9px; }
 .library-header .brand-mark { width: 30px; height: 30px; }
 .library-header .account-actions { gap: 16px; flex-wrap: nowrap; font-size: 12px; white-space: nowrap; }
 .account-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
@@ -186,3 +186,6 @@
   .library-pagination { justify-content: center; gap: 8px; }
   .library-pagination .el-pagination { max-width: 100%; --el-pagination-button-width: 26px; }
 }
+
+.collapsed-folder-divider { border-top:1px solid var(--litera-border); margin:18px 6px 12px; }
+.library-workspace:has(.workspace-tabs) .library-body { min-height:calc(100dvh - 52px - var(--litera-tabs-height)); }

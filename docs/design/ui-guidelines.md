@@ -1,6 +1,6 @@
 # UI 规范与阅读器接口
 
-状态（2026-10-15收尾）：Change 01及局部UI优化已通过用户实际验收；P2-A段落为阶段历史，由最新P2-B段落覆盖。阅读器组件树、props/events和布局状态为Change 02目标设计，目前没有对应实现，见[02接入核对](../../openspec/changes/02-pdf-reader/design.md)。
+状态（2026-10-15收尾）：Change 01及局部UI优化已通过用户实际验收；P2-A段落为阶段历史，由最新P2-B段落覆盖。Change 02 P3-A1及本轮交互补充已有真实实现，A2及后续仍为目标设计，见[02接入核对](../../openspec/changes/02-pdf-reader/design.md)。
 
 ## P2-B最新局部交互（2026-10-15）
 
@@ -16,9 +16,9 @@
 | --- | --- | --- |
 | 01.png | 顶部品牌与账户；左侧图标+文字；导入/新建、搜索、标签/更多筛选；表格、横向滚动、分页 | 保留库布局，当前主列按06参考精简 |
 | 02.png | 导入按钮展开两级菜单：文献、文件夹、Zotero、附件等，子菜单含本地、DOI、题录、手动录入 | 第一版仅本地 PDF 可用；DOI、批量文件夹、Zotero、手动录入隐藏或禁用并标“待实现”；不支持 CAJ |
-| 03.png | 文献标签及关闭；PDF 两行工具栏；PDF、助手、翻译区域；最右侧功能入口 | 简化为 PDF + 一个右侧活动面板，功能轨切换翻译、笔记、AI；保留目录/标注左面板 |
-| 04.png | PDF 与助手双栏；分界处箭头，提示“点击收起” | 用明确按钮折叠与独立拖动分隔条；截图本身不能证明拖动，拖动由本项目需求规定 |
-| 05.png | 助手收起后 PDF 扩宽；右下悬浮助手；右侧功能轨仍在 | 收起 AI 时显示可聚焦悬浮按钮，点击恢复上次宽度；不遮挡翻页与选区 |
+| 03.png | 文献标签、两行工具栏、PDF/助手/翻译区与功能入口 | 历史观察；02现仅实现PDF、左缩略图/大纲、右搜索/批注，不实现助手或翻译工作区 |
+| 04.png | PDF与助手双栏、收起箭头 | 仅借鉴面板折叠释放阅读空间，不能据此开发助手 |
+| 05.png | 助手收起、PDF扩宽、悬浮入口 | 历史观察；最新02明确不实现机器人/悬浮入口 |
 | 06.png | 单行省略、原文标题占主要宽度、固定操作与横向滚动 | Litera六列为原文标题/作者/发表年份/期刊/标签/操作，不复制译文列、引用/商业入口或列设置 |
 | 07.png | 省略号点击白色浮动更多菜单 | P2-A编辑/下载；P2-B增加移动文件夹、管理标签、移入回收站，Dropdown传送至body；不提供翻译/共享 |
 | 08.png | 信息入口打开右侧面板，中央表格缩小；分组字段和关闭按钮 | 单一真实信息/编辑面板，窄屏抽屉；无笔记页签/重要度/关联文件等新业务 |
@@ -70,47 +70,26 @@ P2-A启用本地PDF导入、真实列表/基础排序/分页、右侧文献信�
 
 库导航建议展开宽度 240px，范围 180–320px；收起 56px，仅保留图标和 tooltip。用户点击按钮改变 collapsed，拖动只在 expanded 状态调宽；保留 lastExpandedWidth，扩回恢复宽度。中央 flex 内容用 min-width:0；操作区换行，表格内部滚动，页面不整体溢出。
 
-阅读工作区：ReaderTabs → ReaderToolbar / AnnotationToolbar → ReaderOutlinePanel + PdfViewport + ReaderSidePanel + FunctionRail。PdfViewport 内有文本层与标注层，加载/失败状态可重试。ReaderOutlinePanel 显示目录、书签、批注入口，可折叠；PDF 右侧单一活动面板承载 translation、notes、ai，避免三栏挤压正文。01 的题录编辑表单可由阅读器信息入口复用。
+### Change 02 阅读工作区（2026-10-15取代旧助手布局规划）
 
-右面板建议宽度 360px，范围 280–520px；PDF 主区域建议至少 480px。窗口不足时转为覆盖式抽屉，关闭后释放空间；“不足”按可用宽度与最小值计算，不硬编码特定设备。拖动采用指针捕获；分隔条支持键盘箭头调宽并有 separator 语义。所有宽度数值是可调 UI 初值，不是商业规则。
+ReaderTabs → ReaderToolbar → ToolGroupToolbar → ReaderNavigation + PdfViewport + ReaderAuxPanel。
+主栏依次为阅读/批注/形状/插入，默认阅读并隐藏二级栏，其他组显示对应二级栏；工具全集见[02设计](../../openspec/changes/02-pdf-reader/design.md)。左缩略图/原生大纲，右搜索/批注列表，一次一个面板。默认左240px（180–320）、右360px（280–520），PDF目标最小480px；不足改抽屉，支持折叠/拖动/键盘separator/焦点恢复，fit随有效区域重算。数值为可调UI初值。
 
-| 输入 | 状态变更 | 可见结果 |
+仅一个阅读视图选择器：单页连续默认、单页切换、双页并排翻组；没有双页连续或两组自由组合。缩放50%–500%，自身尺寸适应宽度，页面尺寸适应高度。文献标题省略复用统一Tooltip，标签多时滚动或下拉；关闭当前/其他/全部处理未保存数据。
+
+| 截图 | 已核对结构 | 本次取舍 |
 | --- | --- | --- |
-| open(ai) | expanded=true、activePanel=ai | 隐藏悬浮按钮，PDF 重排 |
-| collapse(ai) | expanded=false、保留 width | PDF 扩展，显示悬浮助手 |
-| 点击悬浮助手 | open(ai) | 恢复宽度；焦点回面板标题/输入区 |
-| open(notes/translation) | expanded=true、切换 activePanel | AI 内容卸载/隐藏，悬浮按钮不额外占空间 |
-| 拖动分隔条 | clamp(width, min, max/可用宽度) | 阅读区跟随重排；不改变文献/页码/选区 |
-| 窗口缩小/放大 | clamp 或切换 drawer | 不丢失活动标签/阅读进度，放大恢复可用宽度 |
+| 15 | 品牌/标签、两级工具栏、PDF及右区 | Litera白灰/#9B0000、PDF主体，无商业功能 |
+| 16 | 标签及关闭当前/其他/全部、下拉文献列表 | 按documentId去重、轻量状态隔离、取消任务 |
+| 17 | 左缩略图/大纲、缩略图滑块 | 仅前两项，按需渲染，无滑块 |
+| 18 | 页面转换/布局两组选项、旋转 | 改成三种互斥视图，无双页连续 |
+| 19 | 缩放菜单/比例/两种适应 | 取需求50%–500%，不复制截图超界比例 |
+| 20–22 | 助手浮球、展开入口和右工作区 | 仅理解扩展关系，本次不开发对应UI/占位工作区 |
+| 23 | 批注/形状/插入等分组及下拉 | 三个核心组直接展示、独立二级栏；其余组不纳入 |
+| 24 | 搜索、区分大小写/整个词语 | 本篇真实PDF文本搜索，无OCR |
+| 25 | 批注列表、位置排序和筛选 | 全部Litera对象/注释摘要、定位与同步，无04依赖 |
 
-AI 默认为 collapsed；未实现时悬浮按钮可打开明确的“AI 问答待实现”占位说明，仅验证布局，不生成回答或模拟对话。是否启用未就绪入口由单一功能注册表控制。布局偏好按用户存本机，退出清理用户数据；不把 PDF 文本存到布局配置。
-
-## 组件契约（TypeScript 设计示例，仅文档）
-
-公共 DTO 完整定义见 [api-contracts.md](api-contracts.md)。以下不创建 `.ts` 文件。
-
-```typescript
-type PanelKind = 'translation' | 'notes' | 'ai';
-interface ReaderSidePanelProps {
-  context: ReaderContext;
-  activePanel: PanelKind;
-  expanded: boolean;
-  width: number;
-  availability: Record<PanelKind, 'pending' | 'ready' | 'unavailable'>;
-}
-interface ReaderEvents {
-  'context-change': ReaderContext;
-  'selection-change': ReaderContext;
-  'annotation-change': { documentId: string; annotationId: string | null };
-  'panel-toggle': { panel: PanelKind; expanded: boolean };
-  'panel-resize': { panel: PanelKind; width: number };
-  'save-note': NoteDraft;
-  'citation-navigate': { documentId: string; pageNumber: number; chunkId: string };
-}
-```
-
-布局层只负责开关/宽度，模块自己负责业务请求。切换文献时发新的 context、清空旧选区、取消在途请求；响应携带 documentId/contextRevision，旧响应不注入新标签。多标签按 documentId 去重；关闭当前页签激活相邻页签，最后一页回库；未保存标注需明确保存/放弃，不静默丢失。
-
+公共事件（仅设计，不创建源码）：context-change/selection-change/document-change携ReaderContext；context-cleared清理；annotation-change携documentId/annotationId/annotationRevision；panel-toggle/panel-resize的当前PanelKind='search'|'annotations'。ReaderContext/NoteDraft/Citation完整定义见[API](api-contracts.md)。未来模块适配器只预留接口，未就绪返回unavailable；不实现save-note按钮、翻译面板、笔记页、AI聊天、机器人或模拟服务。
 
 ## P1 表单交互与统一主题
 
@@ -143,3 +122,23 @@ interface ReaderEvents {
 验收：首次及聚焦无红框；非空失焦错误、纠正清除、提交拦截、两种模式切换；合法提交DTO和服务端错误保留输入；Logo/按钮正常、hover、active、标签、链接及焦点颜色；语义状态色独立；三种桌面尺寸及390×844/360×560窄屏；前端构建、UI浏览器测试和现有真实认证回归。
 
 本轮验证结果见 [UI验收记录](../development/p1-ui.md)。
+
+## P3-A1实际落地（2026-10-15）
+
+品牌52px、轻量标签栏、三组主栏及分组二级栏、左右可折叠框架、中央PDF三视图/页码已实现。左右桌面aside、窄屏原生dialog，当前固定初值（左240px/右320px）；拖动调宽等完整面板完善留后续。固定scale=1、内部滚动；缩放/fit/缩略图/Outline/搜索与进度是A2，批注列表是B1。工具开发中提示不产生业务数据，无03–06 UI。真实浏览器已检查1366×768、1920×1080、390×844及DPR2旋转CropBox页面；详见[P3-A1记录](../development/p3-a1.md)。
+
+## P3-A1交互补充（最新用户授权）
+
+库与阅读器共用WorkspaceTabs，文献管理回库、库中无PDF误高亮、单个关闭同步、最后关闭恢复布局；仅同SPA会话。标题阅读/详情信息/下载原件职责明确，其他操作放更多，回收站不阅读。折叠导航统一右侧浅色Tooltip，单个可见/离开100ms隐藏，文件夹区灰线，展开不重复。
+
+阅读组默认收起二级栏，四组直显；右侧四图标提示为搜索文献/批注列表/下载原始PDF/导出功能开发中。左面板复用指针捕获，180–320px/键盘调宽并折叠恢复，窄屏dialog。布局变化保持页内锚点/页码，页面提交完整Canvas帧，无中央加载文字，真正失败仍可重试。首帧后PUT {}记录最近打开是本次A1补充，不含A2页码/缩放持久化。详见[开发记录](../development/p3-a1-ux.md)。
+
+标签栏定向补充：完整标题提示沿用浅色样式，以统一受控状态保证最多一个；显示/离开隐藏各100ms，取消额外过渡，拖动时隐藏。鼠标在标题上水平移动至少6px后才开始排序，使用透明度与品牌色插入线；松手只重排原有轻量状态对象，不改变激活文献/阅读状态，不请求PDF或写入进度。文献管理入口固定，横向溢出可边缘滚动，Esc/失焦/取消指针不提交排序；不引入拖拽依赖，不扩大为C2批量管理或刷新持久化。
+
+## P3-A2 实际落地
+
+沿用A1已验收布局与左侧180–320px拖动栏。主栏加入缩小/比例输入/放大及Element Plus预设菜单，支持50–500%、适应宽度/高度；非法文本保留输入并提示，超界限制到边界。仅阅读区域拦截Ctrl+滚轮，双页按总尺寸适应，面板/窗口变化重算fit并保留锚点。导航显示真实按需缩略图/当前页红框，或层级大纲/明确空状态。搜索仍在原右区，提供大小写/全词/数量/上下项/点击定位，黄色临时高亮、当前项橙色，不创建标注。底栏显示保存/待保存/失败；失败可重试，冲突明确选择服务端或本地，不能静默丢草稿。详细验收见[P3-A2](../development/p3-a2.md)。
+
+## P3-A2 UI补充（当前规则）
+
+阅读器品牌/标签/主栏/二级栏为48/40/40/40px，阅读组隐藏二级栏；移除Footer，必要的进度失败提示保留。全局Token统一品牌20px、基础UI12px，标题等明确层级不机械缩小。PDF四边padding和单/双页gap均12px，fit与导航同步共享值；取实际阅读容器宽高，无额外导航高度扣减。局部覆盖PDF.js全局.spread左右margin，能容纳时不横滚，超宽仍可滚动；滚动条白灰细样式。缩放/大纲用14px同包SVG箭头，分层缩进明确。鼠标+方向键不显示阅读区整框，Tab进入有局部焦点反馈，不改变全站outline。实现/测量与验收见[A2 UI补充](../development/p3-a2-ux.md)。

@@ -9,11 +9,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:library": "playwright test --config=playwright.library.config.ts"
+    "test:library": "playwright test --config=playwright.library.config.ts",
+    "test:reader": "playwright test --config=playwright.reader.config.ts"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
     "element-plus": "2.14.7",
+    "pdfjs-dist": "6.4.299",
     "vue": "3.5.44",
     "vue-router": "4.6.4"
   },

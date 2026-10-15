@@ -10,7 +10,7 @@ export const router = createRouter({
     { path: '/login', component: AuthPage, meta: { title: '登录' } },
     { path: '/register', component: AuthPage, meta: { title: '注册' } },
     { path: '/library', component: LibraryPage, meta: { protected: true, title: '文献库' } },
-    { path: '/reader/:documentId', redirect: to => ({ path: '/library', query: { documentId: String(to.params.documentId), readerPending: '1' } }) },
+    { path: '/reader/:documentId', component: () => import('./views/ReaderPage.vue'), meta: { protected: true, title: 'PDF 阅读器' } },
     { path: '/profile', component: ProfilePage, meta: { protected: true, title: '个人资料' } },
     { path: '/:pathMatch(.*)*', redirect: '/library' },
   ],

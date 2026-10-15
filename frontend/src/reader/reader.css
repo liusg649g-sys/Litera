@@ -1,0 +1,100 @@
+.reader-workspace { height: 100dvh; display:flex; flex-direction:column; min-width:0; overflow:hidden; font-size:var(--litera-font-size-ui); background:var(--litera-card) }
+.reader-workspace button { border:0; background:transparent; color:var(--litera-text); font:inherit; cursor:pointer; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; gap:6px; flex-shrink:0; padding:7px 9px }
+.reader-workspace button:hover { background:#f1f2f4 }
+.reader-workspace button:disabled { opacity:.4; cursor:default }
+.reader-workspace button[aria-disabled=true] { color:#848992 }
+.reader-workspace svg { width:18px; height:18px; flex-shrink:0 }
+.reader-workspace .selected { color:var(--litera-primary); background:var(--litera-primary-soft); font-weight:600 }
+.reader-brandbar { height:48px; padding:0 22px; display:flex; align-items:center; gap:20px; border-bottom:1px solid var(--litera-border); flex-shrink:0 }
+.reader-brandbar .brand { gap:9px }
+.reader-brandbar .brand-mark { width:30px; height:30px }
+.reader-caption { border-left:1px solid var(--litera-border); padding-left:18px; color:var(--litera-muted) }
+.reader-brandbar nav { margin-left:auto; display:flex; gap:20px }
+.reader-tabs { display:flex; overflow-x:auto; height:var(--litera-tabs-height); min-height:var(--litera-tabs-height); background:#f7f8fa; border-bottom:1px solid var(--litera-border); flex-shrink:0 }
+.reader-tabs .reader-home { padding:0 18px; border-right:1px solid var(--litera-border); border-radius:0; color:var(--litera-muted) }
+.reader-tab { min-width:170px; width:240px; flex-shrink:0; display:flex; align-items:center; padding:0 6px 0 12px; border-right:1px solid var(--litera-border); border-top:2px solid transparent }
+.reader-tab.active { background:white; border-top-color:var(--litera-primary) }
+.reader-tab .overflow-text { flex:1; min-width:0; text-align:left; justify-content:flex-start; padding:8px 0; color:inherit }
+.reader-tab .cell-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0 }
+.reader-tab > button { padding:5px }
+.reader-tab > button svg { width:14px; height:14px }
+.reader-main-toolbar, .reader-secondary { display:flex; align-items:center; gap:8px; padding:0 14px; border-bottom:1px solid var(--litera-border); height:40px; min-height:40px; flex-shrink:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:none }
+.reader-main-toolbar::-webkit-scrollbar,.reader-secondary::-webkit-scrollbar { display:none }
+.reader-main-toolbar > button,.reader-secondary button,.reader-groups button { height:30px; padding-top:4px; padding-bottom:4px }
+.reader-main-toolbar .el-select__wrapper { font-size:var(--litera-font-size-ui) }
+.reader-workspace svg.reader-chevron { width:14px; height:14px; display:block }
+.reader-paging { display:flex; align-items:center; gap:3px; white-space:nowrap }
+.reader-paging form { display:flex; align-items:center; gap:6px; color:var(--litera-muted) }
+.reader-paging input { width:46px; padding:5px; border:1px solid var(--litera-border); border-radius:4px; font:inherit; text-align:center }
+.reader-view-select { width:154px; flex-shrink:0 }
+.reader-groups { display:flex; margin-left:8px; gap:4px; border-left:1px solid var(--litera-border); padding-left:12px }
+.reader-groups button { padding:7px 16px }
+.reader-actions { display:flex; align-items:center; gap:4px; margin-left:auto; white-space:nowrap }
+.reader-actions a { display:flex; align-items:center; gap:5px; padding:7px }
+.reader-secondary { background:#fcfcfd; gap:5px }
+.reader-secondary button { padding:7px 8px; white-space:nowrap }
+.reader-toolbar-rule { height:24px; width:1px; background:var(--litera-border); margin:0 8px; flex-shrink:0 }
+.reader-secondary .reader-color { width:21px; height:21px; padding:0; border:3px solid white; outline:1px solid #d7dbe0; margin:0 3px; background:var(--swatch) }
+.reader-stage-hint { margin-left:auto; color:#969ba2; white-space:nowrap; font-size:12px }
+.reader-notice { padding:8px 18px; background:#fff9ed; color:#85601d; display:flex; align-items:center; justify-content:space-between; flex-shrink:0 }
+.reader-notice button { padding:0 6px }
+.reader-body { display:flex; flex:1; min-height:0; min-width:0; position:relative }
+.pdf-viewport { flex:1; min-width:0; overflow:auto; background:#edeef1; position:relative; scroll-behavior:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#c3c8cf #edeef1 }
+.pdf-viewport::-webkit-scrollbar { width:8px; height:8px }
+.pdf-viewport::-webkit-scrollbar-track { background:#edeef1 }
+.pdf-viewport::-webkit-scrollbar-thumb { background:#c3c8cf; border:2px solid #edeef1; border-radius:8px }
+.pdf-viewport:focus { outline:none }
+.pdf-viewport.keyboard-focus:focus-visible { outline:2px solid var(--litera-primary); outline-offset:-2px }
+.pdf-pages { width:max-content; min-width:100%; padding:var(--reader-page-padding); display:flex; gap:var(--reader-page-gap); align-items:center; flex-direction:column }
+/* pdf_viewer.css also defines global .spread margins (3.5px each). */
+.pdf-pages.spread { margin:0; flex-direction:row; justify-content:safe center; align-items:flex-start }
+.pdf-page { flex-shrink:0; position:relative; background:white; box-shadow:0 1px 5px #20253026; overflow:clip }
+.pdf-page canvas { display:block; width:100%; height:100% }
+.pdf-page .textLayer { z-index:2 }
+.reader-object-layer { position:absolute; inset:0; pointer-events:none; z-index:3 }
+.pdf-page[data-status="等待渲染"],.pdf-page[data-status="正在渲染"] { background:#f7f8fa }
+.pdf-page-loading { position:absolute; top:10px; right:10px; width:12px; height:12px; border:1.5px solid var(--litera-border); border-top-color:var(--litera-muted); border-radius:50%; animation:reader-spin 1s linear infinite; pointer-events:none }
+.reader-panel-resizer { width:6px; margin-left:-3px; margin-right:-3px; z-index:1; flex-shrink:0; cursor:col-resize; touch-action:none }
+.reader-panel-resizer:hover,.reader-panel-resizer:focus-visible { background:var(--litera-primary-soft); outline:1px solid var(--litera-primary) }
+.reader-actions button,.reader-actions a { width:32px; height:32px; display:inline-flex; justify-content:center; align-items:center; border-radius:5px; padding:7px; color:var(--litera-text) }
+.reader-actions a:hover { background:#f1f2f4 }
+.reader-panel { width:240px; flex-shrink:0; border-right:1px solid var(--litera-border); background:white; overflow:auto }
+.reader-panel.right { width:320px; border-right:0; border-left:1px solid var(--litera-border) }
+.reader-panel header { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--litera-border) }
+.reader-panel-tabs { display:flex; padding:12px; gap:6px }
+.reader-panel-placeholder { color:var(--litera-muted); line-height:1.9; padding:12px 18px }
+.reader-panel-dialog { position:fixed; height:100dvh; max-height:100dvh; max-width:calc(100vw - 32px); margin:0; padding:0; border:0; top:0; bottom:0 }
+.reader-panel-dialog.right { left:auto; right:0 }
+.reader-panel-dialog::backdrop { background:#15202d44 }
+.reader-status { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center; color:var(--litera-muted) }
+.reader-status h1 { font-size:20px; font-weight:550; color:var(--litera-text); margin:18px 0 6px }
+.reader-status p { line-height:1.8 }
+.reader-status > svg { width:36px; height:36px }
+.reader-spinner { width:28px; height:28px; border:2px solid #d7dbe0; border-top-color:var(--litera-primary); border-radius:50%; animation:reader-spin 1s linear infinite }
+@keyframes reader-spin { to { transform:rotate(360deg) } }
+@media(max-width:600px) { .reader-brandbar { padding:0 12px; gap:12px } .reader-brandbar nav { gap:12px } .reader-caption { display:none } .reader-main-toolbar,.reader-secondary { padding-left:8px; padding-right:8px } }
+.reader-zoom { display:flex; align-items:center; flex-shrink:0; gap:2px }
+.reader-zoom form { display:flex; align-items:center; border:1px solid var(--litera-border); border-radius:4px; padding-right:5px; background:white }
+.reader-zoom input { width:52px; border:0; padding:5px; font:inherit; text-align:right }
+.pdf-thumbnails { display:flex; flex-direction:column; align-items:center; gap:16px; padding:8px 12px 20px }
+.reader-workspace .pdf-thumbnail { display:flex; flex-direction:column; border:2px solid transparent; padding:8px; max-width:100% }
+.reader-workspace .pdf-thumbnail.selected { border-color:var(--litera-primary) }
+.pdf-thumbnail canvas { background:white; box-shadow:0 1px 4px #20253022; max-width:100% }
+.pdf-thumbnail small { width:128px; font-size:11px }
+.pdf-outline { list-style:none; padding:0 8px 0 14px; margin:0 }
+.pdf-outline li > div { display:flex; align-items:flex-start }
+.pdf-outline .pdf-outline { padding-left:20px }
+.pdf-outline .outline-toggle { width:24px; height:28px; padding:4px; flex-shrink:0 }
+.outline-toggle-placeholder { width:24px; height:28px; flex-shrink:0 }
+.pdf-outline li > div > button:last-child { text-align:left; line-height:20px; padding:4px 6px; overflow-wrap:anywhere; justify-content:flex-start; flex-shrink:1 }
+.pdf-search { padding:14px }
+.pdf-search form { display:flex; border:1px solid var(--litera-border); border-radius:4px }
+.pdf-search form input { min-width:0; width:100%; border:0; padding:8px; font:inherit }
+.search-options { display:flex; flex-wrap:wrap; gap:12px; padding:12px 0 }
+.search-options label { display:flex; align-items:center; gap:4px }
+.pdf-search p { line-height:1.8; color:var(--litera-muted) }
+.search-results { list-style:none; padding:0; margin:12px 0 }
+.search-results li button { display:flex; flex-direction:column; align-items:flex-start; text-align:left; width:100%; overflow-wrap:anywhere; line-height:1.6 }
+.pdf-search-layer { position:absolute; inset:0; pointer-events:none; z-index:1 }
+.pdf-search-layer span { position:absolute; background:#ffde4166 }
+.pdf-search-layer span.current { background:#ff92368c; outline:1px solid #bc6200 }

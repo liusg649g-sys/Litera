@@ -4,7 +4,7 @@
 
 [项目 README](../../README.md) · [六模块总览](../../openspec/changes/README.md)
 
-本目录为总体设计与规划索引。P1/P2-A/P2-B及UI优化已完成，用户已确认Change 01实际功能/UI验收通过，最新状态见[交接](../../HANDOFF.md)，历史证据见[P2-B记录](../development/p2-b.md)。专项MySQL自动化证据仍单独跟踪。PDF.js及其他成员模块待开发；artifact的done仅代表规划完成。
+本目录为总体设计与规划索引。P1/P2-A/P2-B及UI优化已完成，用户已确认Change 01实际功能/UI验收通过，最新状态见[交接](../../HANDOFF.md)，历史证据见[P2-B记录](../development/p2-b.md)。专项MySQL自动化证据仍单独跟踪。PDF.js阅读器A1/A2已实现，其他成员模块待开发；artifact的done仅代表规划完成。
 
 既有文献库布局优化历史见[P2-A UI记录](../development/p2-a-ui.md)。本轮P2-B在此布局上加入真实分类/筛选/历史/回收站，后端增量迁移与权限/清理状态同步实现；最新测试以P2-B记录为准。
 
@@ -13,7 +13,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [architecture.md](architecture.md) | B/S 技术链路、建议目录、部署、环境变量、Git 协作 |
-| [ui-guidelines.md](ui-guidelines.md) | 五张截图分析、视觉、路由、布局、面板与悬浮助手 |
+| [ui-guidelines.md](ui-guidelines.md) | 历次截图分析、15–25阅读参考、视觉/路由/搜索与批注面板 |
 | [api-contracts.md](api-contracts.md) | REST API、DTO、错误和跨模块事件 |
 | [data-model.md](data-model.md) | 实体、关联、隔离、删除和提取版本 |
 | [module-dependencies.md](module-dependencies.md) | 六模块职责、依赖和接入边界 |
@@ -26,7 +26,7 @@
 | Change | 负责人 | 规格能力 | 实现状态 |
 | --- | --- | --- | --- |
 | [01-literature-management](../../openspec/changes/01-literature-management/proposal.md) | Jensen Zhang | user-auth、literature-library | P1/P2-A/P2-B与UI已通过用户验收；33/34，专项MySQL补证待完成；未归档 |
-| [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | 待开发；第二阶段 |
+| [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | P3-A1用户已验收；P3-A2实现/测试见开发记录，等待本轮手动验收；B/C未开始 |
 | [03-translation](../../openspec/changes/03-translation/proposal.md) | Siguo Liu | literature-translation | 待实现 |
 | [04-literature-notes](../../openspec/changes/04-literature-notes/proposal.md) | Siguo Liu | literature-notes | 待实现 |
 | [05-metadata-extraction](../../openspec/changes/05-metadata-extraction/proposal.md) | Jialu Ma | metadata-extraction | 待实现 |
@@ -44,3 +44,9 @@
 ## P2-B当前落地（2026-10-14）
 
 用户已明确启动并完成本轮01 P2-B代码：0003_library增量迁移、个人分类、组合检索、已打开进度子集/历史、软删除/恢复/清理状态与显式重试、原UI真实接入。新增兼容接口POST /cleanup-jobs/{jobId}/retry及nullable DocumentDTO.cleanupJob，仅影响01；具体行为、真实测试与手动MySQL验收见docs/development/p2-b.md、api-contracts.md和HANDOFF。保留P2-A段落为阶段历史，本轮不改变02–06的分工或启动边界。
+
+2026-10-15 Change 02重审已逐张读取15–25与参考索引；更新设计/任务/场景及公共契约，无业务代码或依赖变化，未实施任何阶段。以[02设计](../../openspec/changes/02-pdf-reader/design.md)和[任务](../../openspec/changes/02-pdf-reader/tasks.md)为最新范围，不沿用旧助手UI/书签/12项任务。
+
+P3-A1最新实现、依赖、真实测试及Windows手动验收见[开发记录](../development/p3-a1.md)，先前规划记录仍保留为历史。
+
+最新P3-A2开发、测试范围、公共接入与Windows手动验收见[开发记录](../development/p3-a2.md)。

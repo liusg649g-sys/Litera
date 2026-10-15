@@ -4,13 +4,16 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vu
 import { ElNotification } from 'element-plus'
 import { Collection, Clock, Search, PriceTag, Delete, Folder, Fold, Expand, Plus, Document, Close, MoreFilled } from '@element-plus/icons-vue'
 import Brand from '../components/Brand.vue'
+import WorkspaceTabs from '../components/WorkspaceTabs.vue'
+import { readerTabs } from '../reader/state'
+import { startPointerResize as drag } from '../resize'
 import OverflowText from '../components/OverflowText.vue'
 import DocumentInfoPanel from '../components/DocumentInfoPanel.vue'
 import LibraryActionDialog from '../components/LibraryActionDialog.vue'
 import DocumentClassifyDialog from '../components/DocumentClassifyDialog.vue'
 import { auth, logout } from '../auth'
 import { api, ApiError } from '../api'
-import { clampSidebar, contentUrl, listDocuments, sizeLabel, uploadDocument, listFolders, listTags, writeCategory, removeCategory, trashDocument, restoreDocument, purgeDocument, retryCleanup, getCleanup, recordOpen } from '../library'
+import { clampSidebar, contentUrl, listDocuments, sizeLabel, uploadDocument, listFolders, listTags, writeCategory, removeCategory, trashDocument, restoreDocument, purgeDocument, retryCleanup, getCleanup } from '../library'
 import type { DocumentDTO, FolderDTO, TagDTO, LibraryFilters } from '../library'
 
 const router = useRouter(), route = useRoute()
@@ -21,6 +24,11 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined
 const page = ref(1), pageSize = ref(20), total = ref(0), sort = ref('createdAt'), order = ref('desc')
 const viewportWidth = ref(window.innerWidth), narrow = computed(() => viewportWidth.value < 760)
 const collapsed = ref(narrow.value), sidebarWidth = ref(240)
+const navigationTooltip = ref('')
+let tooltipTimer: ReturnType<typeof setTimeout> | undefined
+function showNavTip(id: string) { clearTimeout(tooltipTimer); navigationTooltip.value = collapsed.value ? id : '' }
+function hideNavTip(id: string) { clearTimeout(tooltipTimer); tooltipTimer = setTimeout(() => { if (navigationTooltip.value === id) navigationTooltip.value = '' }, 100) }
+watch(collapsed, () => { clearTimeout(tooltipTimer); navigationTooltip.value = '' })
 const sidebarSize = computed(() => collapsed.value || narrow.value ? 56 : sidebarWidth.value)
 const maxUploadBytes = ref(0), uploading = ref(false), fileInput = ref<HTMLInputElement>()
 const detailOpen = ref(false), detailWidth = ref(360), panelBusy = ref(false)
@@ -91,7 +99,7 @@ async function completeAction() {
         detailOpen.value = false
       }
     } else {
-      if (value.kind === 'trash') await trashDocument(value.document.id)
+      if (value.kind === 'trash') { await trashDocument(value.document.id); const index = readerTabs.findIndex(tab => tab.id === value.document.id); if (index >= 0) readerTabs.splice(index, 1) }
       else {
         const job = await purgeDocument(value.document.id)
         if (job && job.status !== 'completed') {
@@ -125,13 +133,7 @@ async function cleanup(document: DocumentDTO, retry = false) {
   } catch (error) { notify('error', '清理操作失败', message(error)) }
   finally { rowBusy.value = '' }
 }
-async function readDocument(id: string) {
-  const popup = window.open('', '_blank')
-  if (!popup) { notify('warning', '无法打开 PDF', '请允许浏览器弹出窗口后重试'); return }
-  popup.opener = null
-  try { await recordOpen(id); popup.location.replace(new URL(contentUrl(id), window.location.origin).href); await loadList() }
-  catch (error) { popup.close(); notify('error', '打开 PDF 失败', message(error), { label: '重试阅读', run: () => readDocument(id) }) }
-}
+function readDocument(id: string) { return router.push('/reader/' + encodeURIComponent(id)) }
 function dateLabel(value: string | null) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
 function message(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试' }
 function notify(type: 'success' | 'warning' | 'error' | 'info', title: string, text: string, action?: { label: string; run: () => void | Promise<void> }) {
@@ -195,15 +197,6 @@ function windowResize() {
     if (!panelShell.value?.contains(document.activeElement) && !document.activeElement?.closest('.el-message-box,.el-dialog')) panelHeading.value?.focus()
   })
 }
-function drag(event: PointerEvent, startWidth: number, update: (width: number) => void, direction = 1) {
-  const target = event.currentTarget as HTMLElement
-  target.setPointerCapture(event.pointerId)
-  const start = event.clientX
-  const move = (e: PointerEvent) => update(startWidth + direction * (e.clientX - start))
-  const stop = () => { target.removeEventListener('pointermove', move); target.removeEventListener('pointerup', stop); target.removeEventListener('pointercancel', stop); target.removeEventListener('lostpointercapture', stop) }
-  target.addEventListener('pointermove', move); target.addEventListener('pointerup', stop)
-  target.addEventListener('pointercancel', stop); target.addEventListener('lostpointercapture', stop)
-}
 function resizeStart(event: PointerEvent) { if (!collapsed.value && !narrow.value) drag(event, sidebarWidth.value, width => { sidebarWidth.value = clampSidebar(width) }) }
 function resizeKey(event: KeyboardEvent) {
   if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -256,6 +249,7 @@ async function closeDetail() {
   else fileInput.value?.parentElement?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
 }
 async function saved(document: DocumentDTO) {
+  const tab = readerTabs.find(item => item.id === document.id); if (tab) tab.title = document.title
   rows.value = rows.value.map(row => row.id === document.id ? document : row)
   notify('success', '题录已保存', document.title)
   await loadList()
@@ -263,7 +257,6 @@ async function saved(document: DocumentDTO) {
 function more(command: unknown, document: DocumentDTO) {
   if (command === 'edit') void openDetail(document.id, true)
   if (command === 'move' || command === 'tags') void openQuick(document, command)
-  if (command === 'download') window.location.assign(contentUrl(document.id, true))
   if (command === 'trash') void showAction({ kind: 'trash', document })
 }
 function panelKeys(event: KeyboardEvent) {
@@ -284,24 +277,25 @@ watch(() => [route.query.view, route.query.folderId], () => {
 })
 onMounted(() => {
   void loadConfig(); void loadCategories(); void loadList(); window.addEventListener('resize', windowResize)
-  if (route.query.readerPending) notify('info', '阅读器待实现', '在线阅读器待实现；你可以预览或下载原始 PDF。')
   if (typeof route.query.documentId === 'string') void openDetail(route.query.documentId)
 })
-onUnmounted(() => { cancelSearch(); ++listRevision; controller?.abort(); notifications.forEach(notification => notification.close()); window.removeEventListener('resize', windowResize) })
+onUnmounted(() => { clearTimeout(tooltipTimer); cancelSearch(); ++listRevision; controller?.abort(); notifications.forEach(notification => notification.close()); window.removeEventListener('resize', windowResize) })
 </script>
 <template>
   <div class="library-workspace">
     <header class="workspace-header library-header" :inert="modal"><Brand /><div class="account-actions"><span class="account-name">{{ auth.user?.displayName }}</span><router-link to="/profile">个人资料</router-link><el-button :loading="busy" size="small" @click="signOut">退出登录</el-button></div></header>
+    <WorkspaceTabs :inert="modal" />
     <div class="library-body">
       <button v-if="narrow && !collapsed" class="sidebar-backdrop" aria-label="收起导航" @click="collapsed = true" />
       <aside class="library-sidebar" :inert="modal" :class="{ collapsed, 'sidebar-overlay': narrow && !collapsed }" :style="{ width: (collapsed ? 56 : sidebarWidth) + 'px' }" aria-label="文献库导航">
         <div class="sidebar-heading"><span v-if="!collapsed">文献管理</span><button class="icon-button" :aria-label="collapsed ? '展开导航' : '收起导航'" :aria-expanded="!collapsed" @click="collapsed = !collapsed"><component :is="collapsed ? Expand : Fold" /></button></div>
-        <nav><el-tooltip v-for="item in navigation" :key="item.view" :content="item.label" :disabled="!collapsed" effect="light" popper-class="library-popover" placement="right"><button class="nav-item" :class="{ active: mode === item.view && !filters.folderId }" :aria-label="item.label" :aria-current="mode === item.view && !filters.folderId ? 'page' : undefined" @click="navigate(item.view)"><component :is="item.icon" /><span v-if="!collapsed">{{ item.label }}</span></button></el-tooltip></nav>
+        <nav><el-tooltip v-for="item in navigation" :key="item.view" :content="item.label" :disabled="!collapsed" :visible="collapsed && navigationTooltip === item.view" :hide-after="100" effect="light" popper-class="library-popover" placement="right"><button class="nav-item" @mouseenter="showNavTip(item.view)" @mouseleave="hideNavTip(item.view)" @focus="showNavTip(item.view)" @blur="hideNavTip(item.view)" :class="{ active: mode === item.view && !filters.folderId }" :aria-label="item.label" :aria-current="mode === item.view && !filters.folderId ? 'page' : undefined" @click="navigate(item.view)"><component :is="item.icon" /><span v-if="!collapsed">{{ item.label }}</span></button></el-tooltip></nav>
+        <div v-if="collapsed && folders.length" class="collapsed-folder-divider" role="separator" aria-label="个人文件夹分隔线" />
         <div class="folder-heading" v-if="!collapsed"><span>个人文件夹</span><button class="icon-button" aria-label="新建文件夹" :disabled="!categoriesReady" @click="showAction({ kind: 'folders', name: '' })"><Plus /></button></div>
         <p v-if="categoryError" class="category-state" role="alert">{{ categoryError }}<el-button size="small" @click="loadCategories">重试分类</el-button></p>
         <p v-else-if="!categoriesReady && !collapsed" class="category-state">正在加载分类…</p>
         <p v-else-if="!folders.length && !collapsed" class="category-state">暂无文件夹</p>
-        <div v-for="folder in folders" :key="folder.id" class="folder-row"><el-tooltip :content="folder.name" effect="light" :disabled="!collapsed" popper-class="library-popover"><button class="nav-item" :class="{ active: mode === 'documents' && filters.folderId === folder.id }" :aria-label="'文件夹：' + folder.name" @click="navigate('documents', folder.id)"><Folder /><OverflowText v-if="!collapsed" :text="folder.name" /></button></el-tooltip>
+        <div v-for="folder in folders" :key="folder.id" class="folder-row"><el-tooltip :content="folder.name" effect="light" :disabled="!collapsed" :visible="collapsed && navigationTooltip === folder.id" :hide-after="100" placement="right" popper-class="library-popover"><button class="nav-item" @mouseenter="showNavTip(folder.id)" @mouseleave="hideNavTip(folder.id)" @focus="showNavTip(folder.id)" @blur="hideNavTip(folder.id)" :class="{ active: mode === 'documents' && filters.folderId === folder.id }" :aria-label="'文件夹：' + folder.name" @click="navigate('documents', folder.id)"><Folder /><OverflowText v-if="!collapsed" :text="folder.name" /></button></el-tooltip>
           <el-dropdown v-if="!collapsed" trigger="click" popper-class="library-popover library-menu" @command="showAction({ kind: 'folders', id: folder.id, name: folder.name, remove: $event === 'delete' })"><button class="icon-button" :aria-label="'管理文件夹：' + folder.name"><MoreFilled /></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="rename">重命名文件夹</el-dropdown-item><el-dropdown-item command="delete">删除文件夹</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
         </div>
       </aside>
@@ -325,7 +319,7 @@ onUnmounted(() => { cancelSearch(); ++listRevision; controller?.abort(); notific
           <div v-else-if="listError" class="list-state"><p role="alert">{{ listError }}</p><el-button @click="loadList">重试加载</el-button></div>
           <div v-else-if="!rows.length" class="list-state empty-state"><Document class="empty-icon" /><h2>{{ emptyState.title }}</h2><p>{{ emptyState.text }}</p><el-button v-if="emptyState.action === 'clear'" @click="clearFilters">清除筛选条件</el-button><el-button v-else-if="emptyState.action === 'back'" @click="navigate('documents').then(clearFilters)">返回我的文献</el-button><el-button v-else-if="emptyState.action === 'upload'" type="primary" :disabled="!maxUploadBytes || uploading" @click="chooseFile">导入第一篇 PDF</el-button></div>
           <div v-else-if="mode === 'trash'" class="table-scroll trash-table"><table><thead><tr><th>原文标题</th><th>所属文件夹</th><th>删除时间</th><th>清理状态</th><th>操作</th></tr></thead><tbody><tr v-for="document in rows" :key="document.id"><td><OverflowText :text="document.title"><Document /></OverflowText></td><td><OverflowText :text="folders.find(folder => folder.id === document.folderId)?.name || '未分类'" /></td><td><OverflowText :text="dateLabel(document.deletedAt)" /></td><td><OverflowText :text="document.cleanupJob ? ({ pending: '等待清理', running: '清理中', failed: '清理失败', completed: '清理完成' })[document.cleanupJob.status] : '可恢复'" /></td><td><div class="row-actions"><template v-if="!document.cleanupJob"><button :disabled="Boolean(rowBusy)" @click="restore(document)">恢复</button><button @click="showAction({ kind: 'purge', document })">永久删除</button></template><template v-else><button :disabled="Boolean(rowBusy)" @click="cleanup(document)">查看状态</button><button :disabled="Boolean(rowBusy)" @click="cleanup(document, true)">重试清理</button></template></div></td></tr></tbody></table></div>
-          <div v-else class="table-scroll"><table><thead><tr><th>原文标题</th><th>作者</th><th>发表年份</th><th>期刊</th><th>标签</th><th>操作</th></tr></thead><tbody><tr v-for="document in rows" :key="document.id"><td><OverflowText :text="document.title" as="button" @click="openDetail(document.id)"><Document /></OverflowText></td><td><OverflowText :text="document.authors.join('、') || '—'" /></td><td><OverflowText :text="String(document.year ?? '—')" /></td><td><OverflowText :text="document.journal || '—'" /></td><td><div v-if="document.tags.length" class="table-tags"><el-tooltip v-for="tag in document.tags" :key="tag.id" :content="tag.name" effect="light" popper-class="library-popover"><button @click="filterTag(tag.id)">{{ tag.name }}</button></el-tooltip></div><span v-else class="empty-value">—</span></td><td><div class="row-actions"><el-tooltip :content="'使用浏览器预览 PDF；在线阅读器待实现' + (document.lastReadAt ? '；最近打开：' + dateLabel(document.lastReadAt) : '')" effect="light" popper-class="library-popover"><a :href="contentUrl(document.id)" target="_blank" rel="noopener" @click.prevent="readDocument(document.id)">阅读</a></el-tooltip><button @click="openDetail(document.id)">详情</button><el-dropdown trigger="click" placement="bottom-end" popper-class="library-popover library-menu" :teleported="true" @command="more($event, document)"><button class="more-button" :aria-label="'更多操作：' + document.title"><MoreFilled /></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑题录信息</el-dropdown-item><el-dropdown-item command="download">下载 PDF</el-dropdown-item><el-dropdown-item command="move">移动到文件夹</el-dropdown-item><el-dropdown-item command="tags">管理标签</el-dropdown-item><el-dropdown-item command="trash" divided>移入回收站</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></td></tr></tbody></table></div>
+          <div v-else class="table-scroll"><table><thead><tr><th>原文标题</th><th>作者</th><th>发表年份</th><th>期刊</th><th>标签</th><th>操作</th></tr></thead><tbody><tr v-for="document in rows" :key="document.id"><td><OverflowText :text="document.title" as="button" @click="readDocument(document.id)"><Document /></OverflowText></td><td><OverflowText :text="document.authors.join('、') || '—'" /></td><td><OverflowText :text="String(document.year ?? '—')" /></td><td><OverflowText :text="document.journal || '—'" /></td><td><div v-if="document.tags.length" class="table-tags"><el-tooltip v-for="tag in document.tags" :key="tag.id" :content="tag.name" effect="light" popper-class="library-popover"><button @click="filterTag(tag.id)">{{ tag.name }}</button></el-tooltip></div><span v-else class="empty-value">—</span></td><td><div class="row-actions"><button @click="openDetail(document.id)">详情</button><el-tooltip content="下载原始 PDF" effect="light" popper-class="library-popover" :hide-after="100"><a :href="contentUrl(document.id, true)" aria-label="下载原始 PDF">下载</a></el-tooltip><el-dropdown trigger="click" placement="bottom-end" popper-class="library-popover library-menu" :teleported="true" @command="more($event, document)"><button class="more-button" :aria-label="'更多操作：' + document.title"><MoreFilled /></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="edit">编辑题录信息</el-dropdown-item><el-dropdown-item command="move">移动到文件夹</el-dropdown-item><el-dropdown-item command="tags">管理标签</el-dropdown-item><el-dropdown-item command="trash" divided>移入回收站</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></td></tr></tbody></table></div>
         </section>
         <div v-if="!listError && mode !== 'tags'" class="library-pagination"><span>共 {{ total }} 篇</span><el-pagination v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" :pager-count="5" :disabled="loading" @current-change="loadList" /><el-select v-model="pageSize" class="library-select page-size" aria-label="每页数量" popper-class="library-select-menu" :teleported="true" @change="changeSize"><el-option label="20 篇 / 页" :value="20" /><el-option label="50 篇 / 页" :value="50" /><el-option label="100 篇 / 页" :value="100" /></el-select></div>
       </main>

@@ -1,6 +1,10 @@
-# 统一 API 与跨模块契约 v1（Change 01 已实现，02–06 规划）
+# 统一 API 与跨模块契约 v1（Change 01、02 A1/A2 已实现，后续规划）
 
-本文件为统一API契约。Change 01 的认证、文献、分类、检索、最近阅读及回收站已实现并通过用户功能/UI验收；02 的实际页码/缩放与标注、03–06 接口仍为规划。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（实际 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
+本文件为统一API契约。Change 01 的认证、文献、分类、检索、最近阅读及回收站已实现并通过用户功能/UI验收；02 A2 的实际页码/缩放/模式已实现；标注及03–06接口仍为规划。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（实际 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
+
+## P3-A1已实现接入（2026-10-15）
+
+reader路由及文献库阅读已改PDF.js 6.4.299，复用GET文献详情/受保护content/Range及原件下载，无新后端业务接口。A1交互补充改为首个真实页面完整渲染后调用原PUT progress {}一次，只由服务器更新lastReadAt；下载/题录/渲染失败不记，写失败提示重试。实际页码/缩放/模式持久化已由P3-A2完成。下文01浏览器预览说明为历史实现，02对象/资产/导出仍为后续目标；扩展ProgressDTO已实现，不表示本轮交付。见[P3-A1](../development/p3-a1.md)。
 
 ## 通用约定
 
@@ -10,7 +14,7 @@ Change 01表中的分类、检索、最近阅读、回收站已实现。列表�
 
 PATCH增加folderId（null未分类）和tagIds（null/[]解除全部关联），省略保持；题录和分类通过同一version CAS原子保存。分类删除同时解除回收站文献关联并递增受影响文献版本，不删除PDF。
 
-01实际提供GET/PUT /documents/{id}/progress的已打开子集：PUT `{}`更新服务器lastReadAt和progress.version，重复打开更新同一记录；GET内容/列表/下载不写历史。pageNumber/zoom非null返回503 READER_NOT_READY；可选version校验冲突409。GET /reading-history支持与文献列表相同过滤，始终按lastReadAt倒序（sort/order仅校验），返回既有document/progress分页包络。不实现02真实页码/缩放。
+01实际提供GET/PUT /documents/{id}/progress的已打开子集：PUT `{}`更新服务器lastReadAt和progress.version，重复打开更新同一记录；GET内容/列表/下载不写历史。历史01曾对非空pageNumber/zoom返回503；A2已兼容扩展，当前规则见下文。可选version校验冲突409。GET /reading-history支持与文献列表相同过滤，始终按lastReadAt倒序（sort/order仅校验），返回既有document/progress分页包络。该段为01历史子集，A2已实现真实页码/缩放。
 
 新增兼容接口POST /cleanup-jobs/{jobId}/retry（Origin/CSRF/owner检查）：完成204，否则202作业DTO；GET作业也返回attempts/updatedAt。DocumentDTO增加nullable cleanupJob `{jobId,status,errorCode}`，仅本人回收站显示，无内部存储路径。永久清理开始后不可恢复；pending/failed或运行租约过期可重试，工作行锁与尝试编号阻止并发重复领取；失败持久化并返回202，不能当删除成功。完成后保留审计作业且清空storageKey，释放原PDF的用户内重复约束。具体状态及验收见[P2-B记录](../development/p2-b.md)。上述添加仅属于01，不改变02–06待实现业务。
 
@@ -61,18 +65,31 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 
 上传 DTO：title 初值由文件名（去扩展名）产生，authors=[]，未知元数据=null/[]，parseStatus=not_requested。重复错误 details 仅可包含本人 existingDocumentId、inTrash；若在回收站提示恢复，不悄悄重建。阶段 01 不调用任何解析或 AI。
 
-## Change 02：阅读与标注（目标契约，除打开记录子集外待实现）
+## Change 02：阅读、对象与导出（目标契约，尚未实现）
 
-| 方法/路径 | 输入 | 输出 |
+2026-10-15以[02设计](../../openspec/changes/02-pdf-reader/design.md)为本模块细节来源。01的当前实现/历史段保留；以下不表示API已提供。前缀仍为/api/v1，复用会话、Origin/CSRF、错误包络与owner/有效文献过滤。
+
+| 方法/路径 | 目标输入/输出 | 一致性规则 |
 | --- | --- | --- |
-| GET /documents/{id}/annotations | 可选 pageNumber | AnnotationDTO[]；覆盖书签/批注 |
-| POST /documents/{id}/annotations | `{type,pageNumber,position,selectedText?,content?,color?}` | 201 AnnotationDTO |
-| PATCH /documents/{id}/annotations/{annotationId} | `{content?,color?,version}` | DTO；类型和锚点不可改变，重新选区创建新标注 |
-| DELETE /documents/{id}/annotations/{annotationId} | 无 | 204 |
-| GET /documents/{id}/progress | 无 | ProgressDTO 或未读默认值 |
-| PUT /documents/{id}/progress | `{pageNumber?,zoom?,version?}` | ProgressDTO；01 打开只记 lastReadAt，02 页码已知时保存实际状态 |
+| GET /documents/{id}/annotations | `{items:AnnotationDTO[],annotationRevision}`；可选pageNumber过滤包括多页锚点涉及该页的对象 | 本篇全体含14类对象；分页若后续加入须快照一致，不静默漏项 |
+| POST /documents/{id}/annotations | `{commandId,baseRevision,annotation:{id?,type,pageNumber,position,geometry,style,assetId?,selectedText?,content?,color?,zIndex,schemaVersion}}` →201 MutationResult | id可由客户端生成以支持恢复/幂等；服务端校验唯一及归属 |
+| PATCH /documents/{id}/annotations/{annotationId} | `{commandId,baseRevision,version,changes}` →200 MutationResult | type不可变；文本锚点重选创建新对象；box/path几何可编辑 |
+| DELETE /documents/{id}/annotations/{annotationId} | JSON `{commandId,baseRevision,version}` →200 MutationResult | 删除也CAS且保留幂等收据，不再沿用旧规划无版本204 |
+| POST /documents/{id}/annotation-commands | `{commandId,baseRevision,operation:'restore',annotation:已删除对象快照}` →200 MutationResult | 仅恢复本人同篇原ID，不覆盖其他现存ID；资产必须仍有效 |
+| GET /documents/{id}/annotation-commands/{commandId} | 已确认MutationResult或404 COMMAND_NOT_FOUND | 超时核对，命令同事务入收据，保留24小时；过期须重读集合 |
+| POST /documents/{id}/reader-assets | multipart PNG/JPEG；→201 `{assetId,mimeType,width,height,sizeBytes}` | 同源防伪，真实解码/容量校验；不接受远程URL或SVG |
+| GET /documents/{id}/reader-assets/{assetId}/content | 二进制 | owner/document双重关联，不公开存储键 |
+| DELETE /documents/{id}/reader-assets/{assetId} | 未引用临时资产删除，204 | 已被对象/导出引用409；对象删除的回收由生命周期处理 |
+| GET /documents/{id}/progress | 扩展ProgressDTO | 旧null字段按continuous/fit-width读取 |
+| PUT /documents/{id}/progress | `{pageNumber?,zoom?,viewMode?,zoomMode?,version?,recordOpen?}` | 新状态写必须version；未读0、旧版本409；保留旧PUT {}仅记打开 |
+| GET /documents/{id}/content?download=true | 原始PDF | 复用01，不改原字节，不记阅读 |
+| 带批注导出协议（C1冻结路径） | 受保护POST接受`expectedAnnotationRevision`，下载快照PDF；若异步提供状态/取消/下载 | 不能提前视为可调用API；C1 ADR决定同步/作业协议，所有阶段复验权限 |
 
-页码校验依据 PDF.js 获得且后端验证的物理总页数；01 不依赖 PyMuPDF 自动解析，后续 02 可使用轻量 PDF 结构库读取页数。仅记录打开时间的空请求不修改页码/缩放；提交页码或缩放必须带 version，未读默认 version=0，首次保存以0创建，后续CAS递增，旧版本返回409。客户端遇409读取最新版；页面离开前提交但不把网络失败当成功。
+MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；读取集合revision、对象version和写入baseRevision共同防并发丢失。相同commandId/相同请求返回原结果，内容不同409；事务失败不得留下部分对象/集合版本。客户端同文献串行写、补偿undo/redo也经这些接口，不仅改本地数组。草稿/在途/确认/失败分开；409保留本地并显式选择恢复/重放。
+
+服务端复用已锁pypdf校验真实页数，客户端pageCount不能决定权限/页范围。zoom对外倍率0.5–5，数据库继续字符串。新字段省略保持，新增设置显式null拒绝422；旧pageNumber/zoom为null的打开请求兼容。recordOpen为严格boolean，默认true兼容旧打开请求；A2首目标页成功后写true，后续自动保存写false（不更新最近打开时间）；false及任何非空状态写必须version。成功首目标页渲染后写阅读，1秒防抖/持续最多5秒一次；PUT {}不清页/缩放/模式。题录version、progress.version、annotation.version、annotationRevision、contextRevision互相独立。
+
+对象/资产限额、坐标、幂等/收据保留、清理和导出资源预算见02设计。软删保留但普通访问404、恢复同ID，永久清理接原cleanup_jobs且失败可重试。导出仅已保存一致快照，不混合修订；“第三方可见”与“第三方可编辑”分开验收，不承诺全类型原生可编辑。
 
 ## Change 03–06：预期接口，全部待实现
 
@@ -92,7 +109,7 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 
 ## 核心 DTO（TypeScript 文档示例）
 
-UserDTO、DocumentDTO、分类和打开记录已有实现；ReaderContext、SelectionPosition、AnnotationDTO、NoteDraft、Citation及03–06 DTO是待落地的公共契约，不代表仓库已有对应类型或接口。ProgressDTO.zoom对外为number/null；现有ORM为nullable VARCHAR(20)，读取时转float，02应明确合法范围及写入转换，不重复创建reading_progress。
+UserDTO、DocumentDTO、分类和完整阅读进度已有实现；ReaderContext/SelectionPosition/NoteDraft/Citation源码见frontend/src/reader/context.ts（后两者仅类型），ProgressDTO见reader/progress.ts。AnnotationDTO及03–06业务DTO仍为目标契约。ProgressDTO.zoom对外为number/null；现有ORM为nullable VARCHAR(20)，读取时转float，02应明确合法范围及写入转换，不重复创建reading_progress。
 
 ```typescript
 interface UserDTO { id: string; email: string; displayName: string; createdAt: string }
@@ -118,15 +135,27 @@ interface ReaderContext {
   selectionPosition: SelectionPosition[] | null;
   annotationId: string | null; contextRevision: number;
 }
+type ReaderViewMode = 'continuous'|'single'|'spread';
+type ReaderZoomMode = 'custom'|'fit-width'|'fit-height';
+type AnnotationType = 'highlight'|'underline'|'squiggly'|'strikeout'|'comment'
+  |'freeText'|'ink'|'marker'|'rectangle'|'circle'|'ellipse'|'signature'|'watermark'|'image';
+// 全部坐标相对未旋转CropBox；笔宽/字号为PDF point。仅文档类型，尚无源码。
+type AnnotationGeometry =
+  | { kind:'text'; positions:SelectionPosition[] }
+  | { kind:'box'; pageNumber:number; rect:NormalizedRect; rotation:number }
+  | { kind:'path'; pageNumber:number; points:{x:number;y:number}[] }
+  | { kind:'anchor'; pageNumber:number; x:number; y:number };
 interface AnnotationDTO {
-  id: string; documentId: string; type: 'highlight'|'underline'|'bookmark'|'comment';
-  pageNumber: number; position: SelectionPosition[] | null;
-  selectedText: string | null; content: string | null; color: string | null;
-  version: number; createdAt: string; updatedAt: string;
+  id:string; documentId:string; type:AnnotationType; schemaVersion:1;
+  pageNumber:number; position:SelectionPosition[]|null; geometry:AnnotationGeometry;
+  selectedText:string|null; content:string|null; color:string|null;
+  style:{stroke?:string;fill?:string|null;opacity?:number;lineWidth?:number;fontSize?:number};
+  assetId:string|null; zIndex:number; version:number; createdAt:string; updatedAt:string;
 }
 interface ProgressDTO {
-  documentId: string; pageNumber: number | null; zoom: number | null;
-  lastReadAt: string | null; version: number;
+  documentId:string; pageNumber:number|null; zoom:number|null;
+  viewMode:ReaderViewMode; zoomMode:ReaderZoomMode;
+  lastReadAt:string|null; version:number;
 }
 interface Citation {
   documentId: string; extractionVersion: string; chunkId: string;
@@ -163,7 +192,7 @@ interface AnswerDTO {
 }
 ```
 
-NormalizedRect 相对于 PDF 未旋转页面，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为选区起始页，未选中文本时 selectedText=''、selectionPosition=null。书签 position 可 null；高亮/下划线必须有非空 rects，comment 可页级或选区级。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
+NormalizedRect 相对于 PDF 未旋转可见CropBox，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为选区起始页，未选中文本时 selectedText=''、selectionPosition=null。四种文本标记必须有非空rects；comment可页级或选区级。marker为半透明自由轨迹，与真实文本highlight区别。独立书签不属于02本次范围。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
 
 TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code point 计数，半开区间 `[startOffset,endOffset)`，不依赖 JS UTF-16 索引；跨页内容用多个 chunk 和多条引用表达。引用 pageNumber/quote 必须能在对应版本页文本核对，服务端校验证据，客户端不信任模型随意编造的页码。
 
@@ -172,3 +201,9 @@ TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code poin
 内部 `DocumentUploadedV1={eventId,documentId,ownerId,fileHash,storageKey,occurredAt}` 仅在存储与 DB 提交成功后可发出。storageKey/ownerId 不进入公开 DocumentDTO。01 定义契约且 parseStatus=not_requested；05 启用后可靠入队 queued，并按 `(documentId,fileHash,eventId)` 幂等消费，读取文件前再次校验文献有效。完成提取原子发布版本，禁止部分 pages/chunks 被 06 读取。
 
 `ExtractionReadyV1={documentId,ownerId,extractionVersion,fileHash}` 通知 06 建索引；索引就绪前回答 503 INDEX_NOT_READY，不编造答案。文献软删除时取消/屏蔽在途任务；永久删除清理正文、chunks、向量与来源记录。ReaderEvents 见 UI 文档，context-change 是最新值快照，contextRevision 在切换文献/页码/选区时递增。
+
+## P3-A2 公共阅读上下文（已实现）
+
+生产者为ReaderPage真实PDF文本选区、页码/文献生命周期；消费者为后续03选区翻译、04笔记来源、06上下文，05仅复用documentId/物理页码。`subscribeReaderContext(callback)`返回取消订阅函数；事件为context-change、selection-change、document-change、context-cleared。也提供`window`上的`litera:reader:<事件名>` CustomEvent，detail为不可变快照，清理事件detail=null。`readerContext`为只读快照ref；消费者必须核对documentId+contextRevision，不能把上下文当权限凭证。跨页选区pageNumber取起始页、每页rects/textQuote；取消选区后selectedText=''且selectionPosition=null。
+
+进度失败保留本地草稿并阻止静默路由离开；若PDF本身加载失败则保留草稿并允许回库，重放设置必须等待真实目标帧成功；sessionStorage只存用户/文献隔离的页码/设置，不存PDF或选中文本，退出清理。409读新版后明确选择载入服务端/保存本地；网络超时若结果未知，重试旧版本会409，不能自动用新版本覆盖。请求保护和后端owner校验与01一致。

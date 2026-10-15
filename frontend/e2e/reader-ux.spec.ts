@@ -1,0 +1,140 @@
+import {test,expect} from '@playwright/test'
+import {openLibrary,upload,origin} from './library-fixtures'
+import {readerPdf} from './reader-fixtures'
+async function rendered(page:import('@playwright/test').Page,n=1){await expect(page.locator(`[data-page="${n}"]`)).toHaveAttribute('data-status','已渲染')}
+async function uploaded(page:import('@playwright/test').Page,token:string,label:string){return (await(await upload(page.request,token,readerPdf(label,7),label+'.pdf')).json())}
+
+test('shared tab drag preserves active PDF, page, mode and requests; fast title tooltips stay exclusive',async({page})=>{
+ const token=await openLibrary(page)
+ const a=await uploaded(page,token,'A very long research document title about reliable PDF reading and workspace navigation')
+ const b=await uploaded(page,token,'B short')
+ const c=await uploaded(page,token,'C another long paper title for tooltip timing and drag ordering verification')
+ await page.reload()
+ for(const doc of [a,b,c]){await page.locator('tbody .document-title').filter({hasText:doc.title}).click();await rendered(page);if(doc!==c)await page.getByRole('link',{name:'文献管理',exact:true}).click()}
+ const tabs=page.locator('.reader-tab'), title=(id:string)=>page.locator(`[data-tab-id="${id}"] .document-title`)
+ const order=()=>tabs.evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.tabId))
+ // SPA navigation above retains the same lightweight workspace.
+ await expect(tabs).toHaveCount(3)
+ await page.locator('.reader-view-select').click();await page.getByRole('option',{name:'单页切换',exact:true}).click()
+ await page.getByLabel('当前页码',{exact:true}).fill('4');await page.getByLabel('当前页码',{exact:true}).press('Enter');await rendered(page,4)
+ await page.getByLabel('缩放比例',{exact:true}).fill('100');await page.getByLabel('缩放比例',{exact:true}).press('Enter');await rendered(page,4)
+ await expect.poll(async()=> (await(await page.request.get(`/api/v1/documents/${c.id}/progress`)).json())).toMatchObject({pageNumber:4,zoom:1,zoomMode:'custom'})
+ const effects:string[]=[];page.on('request',r=>{if(/\/documents\/.*\/(content|progress)(\?|$)/.test(r.url()))effects.push(r.method()+r.url())})
+ page.on('worker',()=>effects.push('new Worker'))
+ await page.locator('[data-page="4"] canvas').evaluate(canvas=>{(window as any).tabCanvas=canvas})
+ await title(a.id).hover();await page.waitForTimeout(160);await expect(page.locator('.workspace-title-tooltip:visible')).toHaveText(a.title)
+ for(const id of [c.id,a.id,c.id]){await title(id).hover();await page.waitForTimeout(20);expect(await page.locator('.workspace-title-tooltip:visible').count()).toBeLessThanOrEqual(1)}
+ await title(c.id).hover();await page.waitForTimeout(160);await expect(page.locator('.workspace-title-tooltip:visible')).toHaveCount(1);await expect(page.locator('.workspace-title-tooltip:visible')).toHaveText(c.title)
+ await page.mouse.move(20,300);await page.waitForTimeout(160);await expect(page.locator('.workspace-title-tooltip:visible')).toHaveCount(0)
+ async function drag(id:string,target:string,after:boolean){
+  const source=(await title(id).boundingBox())!,destination=(await page.locator(`[data-tab-id="${target}"]`).boundingBox())!
+  await page.mouse.move(source.x+30,source.y+source.height/2);await page.mouse.down()
+  await page.mouse.move(destination.x+(after?destination.width-8:8),source.y+source.height/2,{steps:12})
+  await expect(page.locator('.reader-tab.dragging')).toHaveCount(1);await expect(page.locator('.workspace-title-tooltip:visible')).toHaveCount(0)
+  await expect(page.locator('.drop-before,.drop-after')).toHaveCount(1);await page.mouse.up()
+ }
+ await drag(a.id,c.id,true);expect(await order()).toEqual([b.id,c.id,a.id])
+ await drag(a.id,b.id,false);expect(await order()).toEqual([a.id,b.id,c.id])
+ await drag(c.id,a.id,false);expect(await order()).toEqual([c.id,a.id,b.id])
+ await drag(c.id,b.id,true);expect(await order()).toEqual([a.id,b.id,c.id])
+ await expect(page).toHaveURL(`/reader/${c.id}`);await expect(page.locator('.reader-tab.active')).toHaveAttribute('data-tab-id',c.id)
+ await expect(page.getByLabel('当前页码',{exact:true})).toHaveValue('4');await expect(page.locator('.reader-view-select')).toContainText('单页切换')
+ expect(await page.locator('[data-page="4"] canvas').evaluate(canvas=>canvas===(window as any).tabCanvas)).toBe(true)
+ expect(effects).toEqual([])
+ // Resizing to a horizontally overflowing bar still allows dragging to the end.
+ await page.setViewportSize({width:700,height:768})
+ await title(a.id).hover();const box=(await title(a.id).boundingBox())!
+ await page.mouse.down();await page.mouse.move(692,box.y+box.height/2,{steps:12});await page.waitForTimeout(650);await page.mouse.up()
+ expect(await order()).toEqual([b.id,c.id,a.id]);await expect(page.getByLabel('当前页码',{exact:true})).toHaveValue('4');expect(effects).toEqual([])
+ await page.setViewportSize({width:1366,height:768})
+ await page.getByRole('link',{name:'文献管理',exact:true}).click();expect(await order()).toEqual([b.id,c.id,a.id])
+ await title(c.id).click();await rendered(page,4);expect(await order()).toEqual([b.id,c.id,a.id])
+ // Sub-threshold movement remains an ordinary click; Escape cancels a real drag.
+ const tiny=(await title(c.id).boundingBox())!;await page.mouse.move(tiny.x+30,tiny.y+12);await page.mouse.down();await page.mouse.move(tiny.x+32,tiny.y+12);await page.mouse.up()
+ expect(await order()).toEqual([b.id,c.id,a.id]);await expect(page).toHaveURL(`/reader/${c.id}`)
+ const cancel=(await title(b.id).boundingBox())!;await page.mouse.move(cancel.x+30,cancel.y+12);await page.mouse.down();await page.mouse.move(cancel.x+80,cancel.y+12);await page.keyboard.press('Escape');await page.mouse.up()
+ expect(await order()).toEqual([b.id,c.id,a.id]);await expect(page.locator('.reader-tab.dragging')).toHaveCount(0)
+ await page.getByRole('button',{name:`关闭文献：${b.title}`,exact:true}).click();expect(await order()).toEqual([c.id,a.id])
+ await title(a.id).click();await expect(page).toHaveURL(`/reader/${a.id}`);await rendered(page)
+})
+
+test('shared workspace survives library routes, opens from title/tabs, closes in sync, and records real recent history',async({page})=>{
+ const token=await openLibrary(page),a=await uploaded(page,token,'A'),b=await uploaded(page,token,'B')
+ await page.reload()
+ const row=page.locator('tbody tr').filter({has:page.getByRole('button',{name:'A',exact:true})})
+ await expect(row.getByRole('link',{name:'阅读',exact:true})).toHaveCount(0)
+ await row.getByRole('button',{name:'详情',exact:true}).click();await expect(page.getByLabel('文献信息',{exact:true})).toBeVisible()
+ await page.getByRole('button',{name:'关闭文献信息',exact:true}).click()
+ const downloading=page.waitForEvent('download');await row.getByRole('link',{name:'下载原始 PDF',exact:true}).click();await downloading
+ expect((await(await page.request.get(`/api/v1/documents/${a.id}/progress`)).json()).version).toBe(0)
+ await row.getByRole('button',{name:'A',exact:true}).click();await rendered(page)
+ await page.getByRole('link',{name:'文献管理',exact:true}).click()
+ await expect(page).toHaveURL('/library');await expect(page.locator('.reader-tab')).toHaveCount(1);await expect(page.locator('.reader-tab.active')).toHaveCount(0)
+ await page.getByRole('button',{name:'最近阅读',exact:true}).click();await expect(page.locator('tbody')).toContainText('A')
+ await page.getByRole('button',{name:'我的文献',exact:true}).click()
+ await page.locator('tbody tr').filter({has:page.getByRole('button',{name:'B',exact:true})}).locator('.document-title').click();await rendered(page)
+ await page.getByRole('link',{name:'文献管理',exact:true}).click();await expect(page.locator('.reader-tab')).toHaveCount(2)
+ await page.locator('.reader-tab').getByRole('button',{name:'A',exact:true}).click();await expect(page).toHaveURL(`/reader/${a.id}`);await rendered(page)
+ await expect(page.locator('.reader-tab')).toHaveCount(2)
+ await page.getByRole('link',{name:'文献管理',exact:true}).click()
+ await page.getByRole('button',{name:'关闭文献：B',exact:true}).click();await expect(page.locator('.reader-tab')).toHaveCount(1)
+ await page.locator('.reader-tab').getByRole('button',{name:'A',exact:true}).click();await rendered(page)
+ await page.getByRole('button',{name:'关闭文献：A',exact:true}).click();await expect(page).toHaveURL('/library');await expect(page.getByRole('navigation',{name:'已打开文献'})).toHaveCount(0)
+ const history=await(await page.request.get('/api/v1/reading-history')).json();expect(history.items.map((i:any)=>i.document.id)).toEqual([a.id,b.id])
+})
+
+test('reading group collapses secondary toolbar without changing page/frame; icons use light tooltips and left panel resizes/restores',async({page})=>{
+ const token=await openLibrary(page),a=await uploaded(page,token,'layout-ux')
+ await page.goto(`/reader/${a.id}`);await rendered(page)
+ await expect(page.getByRole('button',{name:'阅读',exact:true})).toHaveAttribute('aria-pressed','true')
+ await expect(page.locator('.reader-secondary')).toHaveCount(0)
+ await page.locator('.reader-view-select').click();await page.getByRole('option',{name:'单页切换',exact:true}).click()
+ await page.getByLabel('当前页码',{exact:true}).fill('4');await page.getByLabel('当前页码',{exact:true}).press('Enter');await rendered(page,4)
+ await page.getByLabel('缩放比例',{exact:true}).fill('100');await page.getByLabel('缩放比例',{exact:true}).press('Enter');await rendered(page,4)
+ await page.locator('[data-page="4"] canvas').evaluate(c=>{c.setAttribute('data-retained-frame','yes');(window as any).canvasResets=0;new MutationObserver(records=>{(window as any).canvasResets+=records.length}).observe(c,{attributes:true,attributeFilter:['width','height']})})
+ const height=await page.getByLabel('PDF 阅读区域',{exact:true}).evaluate(e=>e.clientHeight)
+ await page.getByRole('button',{name:'批注',exact:true}).click();await expect(page.getByLabel('批注工具栏',{exact:true})).toBeVisible()
+ await expect(page.getByLabel('当前页码',{exact:true})).toHaveValue('4')
+ await page.getByRole('button',{name:'阅读',exact:true}).click();await expect(page.locator('.reader-secondary')).toHaveCount(0)
+ expect(await page.getByLabel('PDF 阅读区域',{exact:true}).evaluate(e=>e.clientHeight)).toBe(height)
+ await expect(page.locator('[data-page="4"] canvas')).toHaveAttribute('data-retained-frame','yes')
+ await expect(page.locator('.pdf-page')).not.toContainText('正在渲染')
+ for(const name of ['搜索文献','批注列表','下载原始 PDF','导出功能开发中']){
+  const action=page.getByRole(name==='下载原始 PDF'?'link':'button',{name,exact:true});await action.hover()
+  await expect(page.getByRole('tooltip',{name,exact:true})).toBeVisible()
+  await page.mouse.move(10,10);await expect(page.getByRole('tooltip',{name,exact:true})).not.toBeVisible()
+ }
+ await page.getByRole('button',{name:'展开文献导航',exact:true}).click()
+ const panel=page.getByLabel('文献导航',{exact:true}),separator=page.getByRole('separator',{name:'调整文献导航宽度'})
+ await expect(panel).toHaveCSS('width','240px');await separator.focus();await page.keyboard.press('ArrowRight');await expect(panel).toHaveCSS('width','250px')
+ const box=(await separator.boundingBox())!;await page.mouse.move(box.x+3,box.y+50);await page.mouse.down();await page.mouse.move(box.x+400,box.y+50);await page.mouse.up();await expect(panel).toHaveCSS('width','320px')
+ await page.getByRole('button',{name:'关闭文献导航',exact:true}).click();await page.getByRole('button',{name:'展开文献导航',exact:true}).click();await expect(panel).toHaveCSS('width','320px')
+ await expect(page.locator('[data-page="4"] canvas')).toHaveAttribute('data-retained-frame','yes');await expect(page.getByLabel('当前页码',{exact:true})).toHaveValue('4')
+ expect(await page.evaluate(()=>(window as any).canvasResets)).toBe(0)
+ await page.screenshot({path:'test-results/reader/ux-desktop.png'})
+ await page.setViewportSize({width:390,height:844});await expect(page.getByRole('dialog',{name:'文献导航',exact:true})).toBeVisible();await page.keyboard.press('Escape')
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
+
+test('collapsed navigation has one right-side tooltip with short hide delay and folder divider',async({page})=>{
+ const token=await openLibrary(page)
+ await page.request.post('/api/v1/folders',{headers:{Origin:origin,'X-CSRF-Token':token},data:{name:'右侧提示文件夹'}})
+ await page.reload();await page.getByRole('button',{name:'收起导航',exact:true}).click()
+ await expect(page.getByRole('separator',{name:'个人文件夹分隔线'})).toBeVisible()
+ const folder=page.getByRole('button',{name:'文件夹：右侧提示文件夹',exact:true})
+ await folder.hover();const tip=page.getByRole('tooltip',{name:'右侧提示文件夹',exact:true});await expect(tip).toBeVisible();await expect(tip).toHaveAttribute('data-popper-placement',/^right/)
+ await page.getByRole('button',{name:'最近阅读',exact:true}).hover();await expect(tip).not.toBeVisible();await expect(page.getByRole('tooltip',{name:'最近阅读',exact:true})).toBeVisible()
+ await page.mouse.move(500,300);await page.waitForTimeout(350);await expect(page.locator('.library-popover:visible')).toHaveCount(0)
+ await page.getByRole('button',{name:'展开导航',exact:true}).click();await folder.hover();await expect(tip).not.toBeVisible()
+})
+
+test('open-record failure is visible and retryable; writes occur only after a real page succeeds',async({page})=>{
+ const token=await openLibrary(page),a=await uploaded(page,token,'record-retry')
+ await page.route(`**/documents/${a.id}/progress`,route=>route.request().method()==='PUT'?route.abort():route.continue())
+ await page.goto(`/reader/${a.id}`);await rendered(page)
+ await expect(page.getByRole('alert')).toContainText('阅读记录未同步')
+ expect((await(await page.request.get(`/api/v1/documents/${a.id}/progress`)).json()).version).toBe(0)
+ await page.unroute(`**/documents/${a.id}/progress`);await page.getByRole('button',{name:'重试阅读记录',exact:true}).click()
+ await expect.poll(async()=> (await(await page.request.get(`/api/v1/documents/${a.id}/progress`)).json()).version).toBe(1)
+ await page.getByRole('link',{name:'文献管理',exact:true}).click();await page.getByRole('button',{name:'最近阅读',exact:true}).click();await expect(page.locator('tbody')).toContainText('record-retry')
+})

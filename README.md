@@ -6,11 +6,11 @@
 
 ## 当前进度
 
-P1/P2-A及P2-B功能和UI优化已完成，用户已确认Change 01实际功能/UI验收通过。个人文件夹、标签、组合检索、最近阅读、回收站、恢复和永久删除均接入真实API；失败清理状态持久化并可查询/重试。仍使用浏览器PDF预览，02–06及管理员未实现。默认50 MiB上传、240px可调侧栏、52px品牌栏和可调宽信息面板保留。当前交接与测试证据边界见[HANDOFF](HANDOFF.md)，历史实现见[P2-B记录](docs/development/p2-b.md)。
+P1/P2-A及P2-B功能和UI优化已完成，用户已确认Change 01实际功能/UI验收通过。个人文件夹、标签、组合检索、最近阅读、回收站、恢复和永久删除均接入真实API；失败清理状态持久化并可查询/重试。02 P3-A1已接入自有PDF.js阅读器：真实Canvas/文本层、三种视图/页码、轻量标签及基础布局；P3-A1已通过用户实际验收，P3-A2已实现缩放/搜索/缩略图/大纲及进度恢复，核心功能经用户Docker实际体验；最新UI补充等待验收；批注等后续功能尚未实现，03–06及管理员未实现。默认50 MiB上传、240px可调侧栏、52px品牌栏和可调宽信息面板保留。当前交接与测试证据边界见[HANDOFF](HANDOFF.md)，历史实现见[P2-B记录](docs/development/p2-b.md)。
 
 开发及测试详情见 [P1 验收记录](docs/development/p1-auth.md)。Docker 拉取、构建和启动由使用者手动执行，开发过程中不自动提交或推送代码。
 
-P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0003_library，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
+P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0004_reader_progress，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
 
 已验收的文献库布局沿用[P2-A UI记录](docs/development/p2-a-ui.md)：六列单行省略/浅色Tooltip、阅读/详情/更多菜单、右侧信息与编辑面板和局部草稿确认、右下角5秒通知。P2-B仅补充真实分类、筛选、历史及回收站交互，参考06–13截图。
 
@@ -122,7 +122,7 @@ npm run dev -- --port 5173 --strictPort
 
 ## 技术方案与分工
 
-采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js、PyMuPDF、LLM API + RAG属于后续模块的规划技术。
+采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js 6.4.299已用于P3-A1；PyMuPDF、LLM API + RAG仍属于后续规划技术。
 
 | 成员 | 负责模块 |
 | --- | --- |
@@ -141,7 +141,7 @@ npm run dev -- --port 5173 --strictPort
 - [设计决策](docs/design/decisions.md)
 - [规划校验记录](docs/design/validation.md)
 
-Change 01已通过用户功能/UI验收；下一次会话经用户明确启动后按P3-A基础阅读、P3-B标注/进度、P3-C工作区与扩展接口开发02。当前/reader/:documentId仍跳回文献详情并说明待实现，不是PDF.js阅读器。管理员、跨用户共享等扩展另立change。
+Change 01及02 P3-A1已通过用户实际功能/UI验收。02 P3-A2（2.1–2.6）的实现、测试和Windows CMD手动部署/验收步骤见[P3-A2记录](docs/development/p3-a2.md)。本轮新增0004_reader_progress兼容扩展原表，保留账号/文献/PDF及旧进度，API启动时随用户手动部署升级。下一阶段P3-B1文本批注须另行授权；本轮不自动继续、提交、推送或归档。管理员、跨用户共享等扩展另立change。
 
 ## P1 页面优化
 
@@ -150,3 +150,11 @@ Change 01已通过用户功能/UI验收；下一次会话经用户明确启动�
 仅验证最新UI、不启动Docker：在frontend目录运行 `npm run test:e2e -- --project=auth-ui`。Docker中的前端更新仍须用户手动执行项目根目录的 `docker compose up -d --build --wait`，然后刷新浏览器。
 
 历史测试：P2-B后端SQLite73/73、完整真实HTTP文献库Playwright21/21、auth-ui10/10；最新标签布局修复构建通过、Vitest10/10及定向浏览器3/3，全量套件新增用例后未重跑。证据见[P2-B](docs/development/p2-b.md)和[P2-B UI](docs/development/p2-b-ui.md)。本次仅文档与关键接入代码核对，重新执行OpenSpec严格校验；未重跑业务测试，未执行Docker。
+
+## P3-A1本轮验证
+
+前端生产构建（含vue-tsc）通过、Vitest26/26；真实生产构建阅读器Playwright7/7加公开实际论文1/1、库回归22/22；后端pytest73/73。API/浏览器测试使用临时SQLite与私有PDF目录，不等同MySQL部署验收。无需Docker运行阅读器套件：frontend下`npm run test:reader`。手动重建仍使用上文`docker compose up -d --build --wait`，本轮未替用户执行。
+
+P3-A1本轮交互补充：库/阅读器共享标签、标题阅读/详情下载、阅读组默认收起二级栏、侧栏拖动与Tooltip优化，以及首帧后真实最近阅读记录。实现/证据与手动步骤见[A1交互记录](docs/development/p3-a1-ux.md)，不含A2/批注业务。
+
+P3-A2最新UI补充将阅读器顶部压缩为48/40/40/40px，移除Footer，统一20px品牌/12px基础字号、SVG箭头与12px阅读间距，修复双页7px额外横向溢出；仍12/36，不启动B1。实现、前端测试及仅重建nginx的CMD验收步骤见[UI记录](docs/development/p3-a2-ux.md)。

@@ -89,7 +89,7 @@ def test_reading_history_only_explicit_opens_and_no_duplicate_records(logged, pd
     assert [item['document']['id'] for item in history['items']] == [a['id'], b['id']]
     assert history['items'][0]['progress']['version'] == 2
     assert logged.put('/api/v1/documents/' + a['id'] + '/progress', json={'version': 0}).status_code == 409
-    assert logged.put('/api/v1/documents/' + a['id'] + '/progress', json={'pageNumber': 1, 'version': 2}).status_code == 503
+    assert logged.put('/api/v1/documents/' + a['id'] + '/progress', json={'pageNumber': 1, 'version': 2}).status_code == 200
     logged.delete('/api/v1/documents/' + a['id'])
     assert logged.get('/api/v1/reading-history').json()['total'] == 1
 

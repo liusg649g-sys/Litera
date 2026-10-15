@@ -1,4 +1,4 @@
-"""Change 01 personal library; no parsing, reader or other module business."""
+"""Personal library, compatible reader progress and durable private-file cleanup."""
 import logging
 import re
 import unicodedata
@@ -8,6 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import Field, field_validator
+from pypdf import PdfReader
 from sqlalchemy import String, cast, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -36,8 +37,18 @@ class TagInput(CategoryInput):
 
 class OpenProgress(InputModel):
     pageNumber: int | None = Field(default=None, ge=1, strict=True)
-    zoom: float | None = Field(default=None, gt=0)
+    zoom: float | None = Field(default=None, ge=0.5, le=5, strict=True, allow_inf_nan=False)
+    viewMode: Literal["continuous", "single", "spread"] | None = None
+    zoomMode: Literal["custom", "fit-width", "fit-height"] | None = None
     version: int | None = Field(default=None, ge=0, strict=True)
+    recordOpen: bool = Field(default=True, strict=True)
+
+    @field_validator("viewMode", "zoomMode")
+    @classmethod
+    def non_null_setting(cls, value):
+        if value is None:
+            raise ValueError("阅读设置不能为 null")
+        return value
 
 def category_dto(item):
     result = {"id": item.id, "name": item.name}
@@ -125,6 +136,8 @@ def document_page(db, owner, request, page, size, sort="createdAt", order="desc"
 def progress_dto(item, id):
     return {"documentId": id, "pageNumber": item.page_number if item else None,
         "zoom": float(item.zoom) if item and item.zoom else None,
+        "viewMode": (item.view_mode if item else None) or "continuous",
+        "zoomMode": (item.zoom_mode if item else None) or "fit-width",
         "lastReadAt": iso(item.last_read_at) if item else None, "version": item.version if item else 0}
 
 def job_dto(job):
@@ -236,24 +249,53 @@ def create_library_router(current_session, require_csrf):
 
     @router.put("/documents/{id}/progress")
     def opened(id: str, payload: OpenProgress, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
-        if payload.pageNumber is not None or payload.zoom is not None:
-            reject(503, "READER_NOT_READY", "实际页码与缩放将在在线阅读器开放")
         _, file = owned_document(db, session.user_id, id)
         if not storage_path(file.storage_key).is_file():
             reject(404, "PDF_NOT_FOUND", "PDF 文件暂不可用")
+        state = {key: value for key, value in payload.model_dump(exclude_unset=True).items()
+                 if key not in ("version", "recordOpen") and value is not None}
+        if (state or not payload.recordOpen) and payload.version is None:
+            reject(422, "PROGRESS_VERSION_REQUIRED", "保存阅读设置需要阅读记录版本")
         # Updating the document serializes concurrent first opens on MySQL and SQLite.
         timestamp = now()
         result = db.execute(update(Document).where(Document.id == id, Document.owner_id == session.user_id, Document.deleted_at.is_(None))
-            .values(last_read_at=timestamp))
+            .values(last_read_at=timestamp if payload.recordOpen else Document.last_read_at))
         if result.rowcount != 1:
             db.rollback(); reject(404, "DOCUMENT_NOT_FOUND", "文献不存在或不可访问")
-        item = db.scalar(select(ReadingProgress).where(ReadingProgress.document_id == id, ReadingProgress.owner_id == session.user_id))
+        # Current read after the document lock, including MySQL REPEATABLE READ:
+        # never compare CAS against the earlier owned_document snapshot.
+        item = db.scalar(select(ReadingProgress).where(ReadingProgress.document_id == id, ReadingProgress.owner_id == session.user_id).with_for_update())
         if payload.version is not None and payload.version != (item.version if item else 0):
             db.rollback(); reject(409, "VERSION_CONFLICT", "阅读记录已更新，请重新读取")
         if item is None:
+            if not payload.recordOpen:
+                db.rollback(); reject(422, "OPEN_REQUIRED", "首次记录必须来自成功打开文献")
             item = ReadingProgress(document_id=id, owner_id=session.user_id, version=0)
             db.add(item)
-        item.last_read_at = timestamp; item.version += 1
+        if state:
+            # Parse the private original, independently of Change 05. Cache only its
+            # immutable physical page count; bibliographic version stays unchanged.
+            doc = db.get(Document, id)
+            if doc.page_count is None:
+                try:
+                    with storage_path(file.storage_key).open("rb") as stream:
+                        reader = PdfReader(stream)
+                        if reader.is_encrypted:
+                            raise ValueError("encrypted")
+                        doc.page_count = len(reader.pages)
+                        if doc.page_count < 1:
+                            raise ValueError("empty")
+                except Exception:
+                    db.rollback(); reject(422, "INVALID_PDF", "无法验证 PDF 真实页数，请重新打开文献")
+            if payload.pageNumber is not None and payload.pageNumber > doc.page_count:
+                db.rollback(); reject(422, "INVALID_PAGE", "页码超出 PDF 真实页数")
+            for key, column in (("pageNumber", "page_number"), ("zoom", "zoom"),
+                                ("viewMode", "view_mode"), ("zoomMode", "zoom_mode")):
+                if key in state:
+                    setattr(item, column, str(state[key]) if key == "zoom" else state[key])
+        if payload.recordOpen:
+            item.last_read_at = timestamp
+        item.version += 1
         db.commit()
         return progress_dto(item, id)
 

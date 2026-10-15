@@ -50,7 +50,7 @@ export const restoreDocument = (id: string) => api<DocumentDTO>('/trash/document
 export const purgeDocument = (id: string) => api<CleanupJobDTO | undefined>('/trash/documents/' + encodeURIComponent(id), { method: 'DELETE' }, auth.csrfToken)
 export const retryCleanup = (id: string) => api<CleanupJobDTO | undefined>('/cleanup-jobs/' + encodeURIComponent(id) + '/retry', { method: 'POST' }, auth.csrfToken)
 export const getCleanup = (id: string) => api<CleanupJobDTO>('/cleanup-jobs/' + encodeURIComponent(id))
-export const recordOpen = (id: string) => api('/documents/' + encodeURIComponent(id) + '/progress', { method: 'PUT', body: '{}' }, auth.csrfToken)
+export const recordOpen = (id: string, signal?: AbortSignal) => api('/documents/' + encodeURIComponent(id) + '/progress', { method: 'PUT', body: '{}', signal }, auth.csrfToken)
 export const clampSidebar = (width: number) => Math.min(320, Math.max(180, width))
 export function sizeLabel(bytes: number) {
   if (bytes < 1024) return bytes + ' B'

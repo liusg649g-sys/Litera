@@ -9,6 +9,9 @@
   --litera-text: #303133;
   --litera-muted: #737982;
   --litera-border: #E5E7EB;
+  --litera-font-size-ui: 12px;
+  --litera-font-size-brand: 20px;
+  --litera-tabs-height: 40px;
   --brand-primary: var(--litera-primary);
   --page-bg: var(--litera-page);
   --surface: var(--litera-card);
@@ -23,4 +26,5 @@
   --el-color-primary-light-9: var(--litera-primary-soft);
   --el-border-radius-base: 6px;
   --el-font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --el-font-size-base: var(--litera-font-size-ui);
 }
