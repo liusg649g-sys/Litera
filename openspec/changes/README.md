@@ -5,7 +5,7 @@ Litera 的功能分为以下六个独立 OpenSpec change：
 | 模块 | 主要用途 | 负责人 |
 | --- | --- | --- |
 | [01 文献管理](01-literature-management/proposal.md) | 注册登录与个人资料；PDF 导入、查看下载、分类检索、手工题录编辑、最近阅读及回收站。 | Jensen Zhang |
-| [02 PDF 阅读与文献编辑](02-pdf-reader/proposal.md) | 在线阅读 PDF，支持三种视图、搜索/选区、14类标注/插入、阅读进度、批注导出、多标签和可伸缩面板；不改写 PDF 正文。 | Jensen Zhang |
+| [02 PDF 阅读与文献编辑](02-pdf-reader/proposal.md) | 在线阅读 PDF，支持三种视图、搜索/选区、13类标注/插入、阅读进度、批注导出、多标签和可伸缩面板；不改写 PDF 正文。 | Jensen Zhang |
 | [03 文献翻译](03-translation/proposal.md) | 翻译中英文词句、段落与选区，在侧栏展示原文和译文，支持复制及保存笔记。 | Siguo Liu |
 | [04 文献笔记](04-literature-notes/proposal.md) | 管理和搜索个人笔记，保存原文摘录、翻译及 AI 回答，并关联文献与页码。 | Siguo Liu |
 | [05 文献信息自动提取](05-metadata-extraction/proposal.md) | 从 PDF 提取题录候选和带页码正文，支持人工校正，为 RAG 提供原文数据。 | Jialu Ma |

@@ -10,6 +10,5 @@ defineProps<{ name: string }>()
     <template v-else-if="name==='注释'"><path d="M4 3h16v13H9l-5 5z M8 7h8 M8 11h6"/></template>
     <template v-else-if="name==='自由文本'"><rect x="2" y="3" width="20" height="18" rx="2" stroke-dasharray="3 2"/><path d="M7 8h10 M12 8v9 M10 17h4"/></template>
     <template v-else-if="name==='手绘'"><path d="m5 15 11-12 4 4L9 19l-5 1z M14 5l4 4 M3 23q3-5 6-1t7-1"/></template>
-    <template v-else><path d="m8 12 7-10 6 5-8 10z M8 12l-4 5 5 4 4-4 M2 23h12"/><path d="m5 18 3 2" stroke-width="3"/></template>
   </svg>
 </template>

@@ -33,7 +33,7 @@
 - 使用本机已安装OpenSpec 1.14.1；PATH未含CLI，改用现有绝对路径。只读list/status/instructions确认repo-local root、4/4规划产物；没有安装依赖或修改schema。
 - 本轮`openspec validate --all --strict --json`：6 passed、0 failed，所有issues=[]；02有效。严格校验仅证明规约结构，不证明阅读器已实现。
 - 本轮Markdown检查范围为HANDOFF、根README、change总览、docs/design及02全部文档：17文件、本地链接87个、缺失0。git diff --check通过，仅Git LF/CRLF转换提示。
-- 已移除旧AI浮球/业务工作区、书签、两组视图自由组合及旧12项任务；写入三视图/50%–500%、14类对象/资产、集合CAS/幂等收据/补偿撤销、进度兼容、导出快照/第三方可见矩阵及资源预算。
+- 已移除旧AI浮球/业务工作区、书签、两组视图自由组合及旧12项任务；写入三视图/50%–500%、13类对象/资产（按2026-10-16取消荧光笔后的最新目标）、集合CAS/幂等收据/补偿撤销、进度兼容、导出快照/第三方可见矩阵及资源预算。
 - 已查阅PDF.js、pypdf、PyMuPDF官方文档，来源链接在02设计；导出具体方案留C1验证后决策，没有提前安装或声称全类型可编辑。
 - 未改frontend/backend业务、锁文件、迁移、01/03–06产物或历史测试文件；未运行业务测试、数据库迁移、Docker Compose，未commit/push/sync/archive，未启动任何P3阶段。原有未跟踪参考图/索引保留。
 - 下文全部为此前规划/收尾证据，不覆盖、不改写其测试结论；01专项MySQL补证仍按原交接跟踪。

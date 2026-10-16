@@ -90,7 +90,9 @@ Canvas数量、内存/缓存/并发预算及长文压力样本等数值均为初
 
 ### 6. 对象类型与操作
 
-AnnotationType共14类：highlight、underline、squiggly、strikeout、comment、freeText、ink、marker、rectangle、circle、ellipse、signature、watermark、image。独立bookmark从旧规划移除，无旧标注数据需迁移。普通highlight绑定真实文本矩形，marker为半透明自由轨迹，可用于扫描页；ink是不透明手绘。下划线/波浪线/删除线同样必须真实选区。
+AnnotationType共13类：highlight、underline、squiggly、strikeout、comment、freeText、ink、rectangle、circle、ellipse、signature、watermark、image。独立bookmark从旧规划移除，无旧标注数据需迁移。highlight绑定真实文本矩形，ink为自由手绘笔迹，可用于有文本或扫描页。下划线/波浪线/删除线同样必须真实选区。
+
+对象数量以6类B1文本批注+1类手绘+3类形状+3类插入=13为准。2026-10-16取消独立荧光笔；原marker只存在于目标设计，当前API/前端类型仅六类，未为此改库或转换数据。手绘留待B2 4.1，高亮继续依赖真实文本选区。
 
 AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/color/version/时间，增加schemaVersion=1、geometry、style、assetId、zIndex。position为文本逐页锚点；geometry为box/points/anchor判别联合；服务端按type验证所有子页/边界，拒绝未知字段/任意HTML或JS。style白名单stroke/fill/opacity/lineWidth/fontSize等，#RRGGBB自定义与透明度分离。类型不可变，文本重选建新对象；box/path可合法移动缩放。
 
@@ -99,7 +101,7 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 | 四种文本标记 | 选择真实文本创建多矩形 | 颜色/透明度可改；锚定原文不自由拖移；重建/删除可撤销 |
 | 注释 | 页点或文本选区，纯文本内容 | 页点可移动；文本锚点不拖移；保存内容/位置，与04笔记独立 |
 | 自由文本 | 点击/框选并输入纯文本 | 移动、改框、字号/颜色；换行按框，导出验证字体与可见内容 |
-| 手绘/荧光笔 | 指针采样页内点列 | 颜色/笔宽/透明度、整对象移动缩放；跨页拆对象，pointercancel不留半条 |
+| 手绘 | 指针采样页内点列 | 颜色/笔宽/透明度、整对象移动缩放；跨页拆对象，pointercancel不留半条 |
 | 矩形/圆/椭圆 | 页内拖动box | 边框、填充可无、线宽；圆等比，另两类自由缩放，限页内 |
 | 签名 | 手写确认后放置，或本地PNG/JPEG签名图 | 单页视觉对象，移动/等比缩放；无签名库/证书签章 |
 | 水印 | 输入纯文本，当前页预览确认 | 内容、角度、透明度、字号、box移动/尺寸；首版仅当前页，无全篇批量 |
@@ -123,15 +125,26 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 
 ### 8. 原件下载与带批注导出（C1再定具体方案）
 
-原件GET content?download=true，字节哈希与上传一致。导出包含本人本篇服务器已保存的全部14类对象；存在未保存内容时必须明确提示，先保存并确认成功，或由用户明确选择上次已保存版本。提交expectedAnnotationRevision，冲突409重新选择；一致性事务复制源fileHash、对象/样式/资产引用，后续编辑不改变快照，不能混多个版本。
+原件GET content?download=true，字节哈希与上传一致。导出包含本人本篇服务器已保存的全部13类对象；存在未保存内容时必须明确提示，先保存并确认成功，或由用户明确选择上次已保存版本。提交expectedAnnotationRevision，冲突409重新选择；一致性事务复制源fileHash、对象/样式/资产引用，后续编辑不改变快照，不能混多个版本。
 
 | 路线/技术候选 | 能力与取舍 | C1验证重点 |
 | --- | --- | --- |
-| 标准PDF Annotation+appearance | 文本四类可映射Highlight/Underline/Squiggly/StrikeOut；comment→Text、freeText→FreeText、ink/marker→Ink、矩形→Square、圆/椭圆→Circle；签名/图片可能Stamp | 外观流、QuadPoints、透明度、中文、Rotate/CropBox；标准对象存在不保证各阅读器都可编辑 |
+| 标准PDF Annotation+appearance | 文本四类可映射Highlight/Underline/Squiggly/StrikeOut；comment→Text、freeText→FreeText、ink→Ink、矩形→Square、圆/椭圆→Circle；签名/图片可能Stamp | 外观流、QuadPoints、透明度、中文、Rotate/CropBox；标准对象存在不保证各阅读器都可编辑 |
 | 扁平化页内容叠加 | 文字/路径/形状/图像/水印写入页面，通常只能看；保留原页矢量/文本，避免整页截图 | 注释正文以可见说明框或带页码定位的附注页保留，不能只剩图标；字体/换行/Z序 |
 | 混合 | 常见对象原生且带外观，复杂对象扁平化 | 每类型能力矩阵，不漏对象或重复绘制 |
 | 现有pypdf | 优先评估复用注释写入/叠加PDF，不当万能渲染排版器；必要配ReportLab生成文字/矢量叠加 | 锁定版本真实API、外观/字体限制；新增库仅实施时评估 |
 | PyMuPDF备选 | 注释、绘制及烘焙能力候选 | 精确版本、平台包、字体及许可适配审阅后再选；目前未安装/未决定 |
+
+后续C1导出验收清单共13类（尚未实施导出）：
+
+| 分组 | 对象 | 数量 |
+| --- | --- | --- |
+| B1文本批注 | highlight、underline、squiggly、strikeout、comment、freeText | 6 |
+| 自由绘制 | ink | 1 |
+| 形状 | rectangle、circle、ellipse | 3 |
+| 插入 | signature、watermark、image | 3 |
+
+每类均需独立验证外观、位置、颜色/透明度及必要正文；不以少数类型成功替代13类完整矩阵。
 
 最低验收是第三方可见（含注释正文）；第三方继续编辑单列能力，不能承诺全部原生可编辑。C1技术验证后形成ADR，冻结扁平化/混合/原生路线、库与同步/异步协议。依据：[pypdf注释](https://pypdf.readthedocs.io/en/stable/user/adding-pdf-annotations.html)、[水印与叠加](https://pypdf.readthedocs.io/en/stable/user/add-watermark.html)、[PyMuPDF注释](https://pymupdf.readthedocs.io/en/latest/annot.html)、[bake](https://pymupdf.readthedocs.io/en/latest/document.html#Document.bake)、[许可说明](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)。能力资料不能替代锁定版本样本实验。PyMuPDF bake会丢失注释的隐藏正文等非外观数据，因此不能直接烘焙图标就声称已保留注释；必须先把正文做成可见说明或附注。
 
@@ -153,7 +166,7 @@ ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|
 - PDF.js内部接口/字体/浏览器：锁版本并测生产Worker，不只开发服务。
 - 保存超时/他端冲突：集合CAS、幂等收据和补偿undo一起测，不能只前端数组undo。
 - 高倍Canvas/长文索引/图像/导出内存：有界预算与进程隔离，超限明确反馈、不静默漏页/对象。
-- 导出：中文字体、注释正文、复杂样式与许可是C1决策门槛，14类第三方可见才能通过。
+- 导出：中文字体、注释正文、复杂样式与许可是C1决策门槛，13类第三方可见才能通过。
 
 ### 10. 验收样本与测量记录
 

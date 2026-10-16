@@ -5,7 +5,7 @@
 | 模块/负责人 | 拥有的数据与行为 | 使用公共契约 |
 | --- | --- | --- |
 | 01 Jensen Zhang | 普通用户认证、私有文件、文献元数据、文件夹/标签、回收站 | 当前用户、DocumentDTO、PDF 内容接口 |
-| 02 Jensen Zhang | 阅读、选区、14类标注/插入、进度、批注导出、多标签与布局 | 01 权限/文件，ReaderContext、NoteDraft、引用跳转 |
+| 02 Jensen Zhang | 阅读、选区、13类标注/插入、进度、批注导出、多标签与布局 | 01 权限/文件，ReaderContext、NoteDraft、引用跳转 |
 | 03 Siguo Liu | 中英选区翻译、原译文展示/复制 | 02 context；通过 04 保存笔记 |
 | 04 Siguo Liu | 个人笔记 CRUD、来源关联、个人搜索 | 01 文献权限；02/03/06 NoteDraft |
 | 05 Jialu Ma | 元数据候选、页文本、分块、人工校正与提取版本 | 01 上传扩展点；发布 ExtractionResult |

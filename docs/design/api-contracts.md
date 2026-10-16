@@ -2,7 +2,7 @@
 
 ## P3-B1 实现约束（2026-10-15）
 
-生产者：backend/app/annotations.py；消费者：frontend/src/reader/annotations.ts、PdfAnnotations.vue、AnnotationList.vue。保留后文完整14类目标契约，实际B1只开放六类，不开放资产/导出。
+生产者：backend/app/annotations.py；消费者：frontend/src/reader/annotations.ts、PdfAnnotations.vue、AnnotationList.vue。保留后文完整13类目标契约，实际B1只开放六类，不开放资产/导出。
 
 - geometry=text的positions必须与position完全相同，非空逐页rects/textQuote且selectedText非空；起始pageNumber必须一致，服务端用原PDF真实页数验证全部子页。四种文本标记只用text；comment用text或anchor；freeText只用box（rotation=0），坐标始终是未旋转CropBox左上归一化值，不能越界或含NaN/Infinity。
 - `color`必为#RRGGBB（默认#F5D547），透明度独立；style只接受stroke/fill、opacity(0,1]、lineWidth 0.25–20pt、fontSize 6–144pt，默认1/1/14。PATCH changes允许color/content/style/geometry/zIndex，style子字段合并，type/id/文本锚点不可修改，非文本几何可在原页移动/改框。comment/freeText正文非空，纯文本由Vue按文本输出，不执行HTML；单字段最多20k字符、单对象序列化最多1MiB、单篇最多10k活动对象，不截断。
@@ -84,7 +84,7 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 
 | 方法/路径 | 目标输入/输出 | 一致性规则 |
 | --- | --- | --- |
-| GET /documents/{id}/annotations | `{items:AnnotationDTO[],annotationRevision}`；可选pageNumber过滤包括多页锚点涉及该页的对象 | 本篇全体含14类对象；分页若后续加入须快照一致，不静默漏项 |
+| GET /documents/{id}/annotations | `{items:AnnotationDTO[],annotationRevision}`；可选pageNumber过滤包括多页锚点涉及该页的对象 | 本篇全体含13类对象；分页若后续加入须快照一致，不静默漏项 |
 | POST /documents/{id}/annotations | `{commandId,baseRevision,annotation:{id?,type,pageNumber,position,geometry,style,assetId?,selectedText?,content?,color?,zIndex,schemaVersion}}` →201 MutationResult | id可由客户端生成以支持恢复/幂等；服务端校验唯一及归属 |
 | PATCH /documents/{id}/annotations/{annotationId} | `{commandId,baseRevision,version,changes}` →200 MutationResult | type不可变；文本锚点重选创建新对象；box/path几何可编辑 |
 | DELETE /documents/{id}/annotations/{annotationId} | JSON `{commandId,baseRevision,version}` →200 MutationResult | 删除也CAS且保留幂等收据，不再沿用旧规划无版本204 |
@@ -153,7 +153,7 @@ interface ReaderContext {
 type ReaderViewMode = 'continuous'|'single'|'spread';
 type ReaderZoomMode = 'custom'|'fit-width'|'fit-height';
 type AnnotationType = 'highlight'|'underline'|'squiggly'|'strikeout'|'comment'
-  |'freeText'|'ink'|'marker'|'rectangle'|'circle'|'ellipse'|'signature'|'watermark'|'image';
+  |'freeText'|'ink'|'rectangle'|'circle'|'ellipse'|'signature'|'watermark'|'image';
 // 全部坐标相对未旋转CropBox；笔宽/字号为PDF point。B1六类已有源码，其他类型待B2。
 type AnnotationGeometry =
   | { kind:'text'; positions:SelectionPosition[] }
@@ -207,7 +207,7 @@ interface AnswerDTO {
 }
 ```
 
-NormalizedRect 相对于 PDF 未旋转可见CropBox，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为选区起始页，未选中文本时 selectedText=''、selectionPosition=null。四种文本标记必须有非空rects；comment可页级或选区级。marker为半透明自由轨迹，与真实文本highlight区别。独立书签不属于02本次范围。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
+NormalizedRect 相对于 PDF 未旋转可见CropBox，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为选区起始页，未选中文本时 selectedText=''、selectionPosition=null。四种文本标记必须有非空rects；comment可页级或选区级。ink为自由手绘轨迹，highlight仅绑定真实文本选区。独立书签不属于02本次范围。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
 
 TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code point 计数，半开区间 `[startOffset,endOffset)`，不依赖 JS UTF-16 索引；跨页内容用多个 chunk 和多条引用表达。引用 pageNumber/quote 必须能在对应版本页文本核对，服务端校验证据，客户端不信任模型随意编造的页码。
 

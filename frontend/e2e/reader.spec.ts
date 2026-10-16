@@ -59,6 +59,12 @@ test('B2 tool groups remain unavailable and responsive panels preserve reading',
   const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('layout',1))).json()
   await page.goto(`/reader/${doc.id}`);await rendered(page,1)
   const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(r.url())})
+  await page.getByRole('button',{name:'批注',exact:true}).click()
+  await expect(page.getByRole('button',{name:/荧光笔/})).toHaveCount(0)
+  await expect(page.locator('.reader-secondary > button.el-tooltip__trigger')).toHaveCount(7)
+  for (const name of ['高亮','下划线','波浪线','删除线','注释','自由文本']) {
+    await expect(page.getByRole('button',{name,exact:true})).toHaveAttribute('aria-disabled','false')
+  }
   for(const [group,tool] of [['形状','矩形'],['插入','签名'],['批注','手绘']]){
     await page.getByRole('button',{name:group,exact:true}).click()
     const button=page.getByRole('button',{name:`${tool}（功能开发中）`,exact:true})

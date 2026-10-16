@@ -189,7 +189,7 @@ const leftOpen = ref(false), rightOpen = ref(false), rightPanel = ref('搜索')
 const leftPanel = ref('缩略图'), group = ref('阅读'), notice = ref('')
 const leftWidth = ref(240)
 const tools = {
-  '批注': [['高亮', EditPen], ['下划线', EditPen], ['波浪线', EditPen], ['删除线', EditPen], ['注释', ChatLineSquare], ['自由文本', Document], ['手绘', Brush], ['荧光笔', EditPen]],
+  '批注': [['高亮', EditPen], ['下划线', EditPen], ['波浪线', EditPen], ['删除线', EditPen], ['注释', ChatLineSquare], ['自由文本', Document], ['手绘', Brush]],
   '形状': [['矩形', Crop], ['圆形', CirclePlus], ['椭圆形', CirclePlus]],
   '插入': [['签名', EditPen], ['水印', Document], ['图片', Picture]],
 } as const

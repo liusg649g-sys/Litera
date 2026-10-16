@@ -33,7 +33,7 @@ MySQL，utf8mb4；ID 建议 UUID 字符串；时间用 UTC DATETIME(6)，API 转
 | document_tags | ownerId、documentId、tagId；(documentId,tagId) UNIQUE | 01 文献库 |
 | reading_progress | 原owner/document/pageNumber/zoom/lastReadAt/version保留，02增nullable viewMode/zoomMode；旧空请求兼容 | 01 打开记录，02 扩充 |
 | cleanup_jobs | ownerId、documentId、storageKey、status、attempts、errorCode；独立清理记录防止文件孤儿 | 01 回收站 |
-| annotations | owner/document、14类type、schemaVersion、pageNumber、position/geometry/style JSON、selectedText/content/color、assetId/zIndex/version/时间 | 02 B1/B2 |
+| annotations | owner/document、13类type、schemaVersion、pageNumber、position/geometry/style JSON、selectedText/content/color、assetId/zIndex/version/时间 | 02 B1/B2 |
 | document_reader_state | documentId唯一、ownerId、annotationRevision；与对象写同事务CAS | 02 B1 |
 | annotation_command_receipts | owner/document/commandId唯一、请求指纹、结果/修订号、过期时间；幂等/在途核对 | 02 B1 |
 | reader_assets | owner/document、私有key、mime/hash/像素尺寸/引用/租约/过期状态；PNG/JPEG | 02 B2 |
@@ -45,6 +45,8 @@ MySQL，utf8mb4；ID 建议 UUID 字符串；时间用 UTC DATETIME(6)，API 转
 | document_chunks | ownerId、documentId、extractionVersion、pageNumber、startOffset、endOffset、text | 05 |
 | qa_answers | ownerId、documentId、extractionVersion、question nullable、mode、answer、status、citations JSON | 06 |
 | rag_indexes | ownerId、documentId、extractionVersion、indexStatus、isActive、embeddingModel、indexKey；同文献最多一个活动索引；向量后端外置或嵌入式待定 | 06 |
+
+02对象目标为13类：B1六类+手绘+三形状+三插入。2026-10-16取消独立荧光笔；当前业务API只接受B1六类，此调整不改数据库结构或已有记录。
 
 翻译结果与问答答案作为可保存来源，暂不规划会话历史/多轮聊天页面；具体保留时长待配置决定。sourceType/sourceId 的多态关系由服务层校验，不伪称数据库可以用单个外键关联多张表。annotation 删除后 notes.annotationId SET NULL，保留笔记中的原文快照。首次阶段不提前创建 03–06 表。
 
