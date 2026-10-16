@@ -5,6 +5,7 @@ export type ZoomMode = 'custom' | 'fit-width' | 'fit-height'
 export interface ReaderTab { id: string; title: string; page: number; mode: ViewMode; scrollTop: number; zoom: number; zoomMode: ZoomMode }
 // Only lightweight session state survives a visit to the library. Never store PDF bytes/DOM.
 export const readerTabs = reactive<ReaderTab[]>([])
+export const annotationListFilters = reactive<Record<string, { type: string; color: string; sort: string }>>({})
 export function openReaderTab(id: string, title = '正在读取文献…') {
   let tab = readerTabs.find(item => item.id === id)
   if (!tab) { tab = { id, title, page: 1, mode: 'continuous', scrollTop: 0, zoom: 1, zoomMode: 'fit-width' }; readerTabs.push(tab) }
@@ -12,7 +13,8 @@ export function openReaderTab(id: string, title = '正在读取文献…') {
 }
 export function clearReaderTabs(clearDrafts = false) {
   readerTabs.splice(0)
-  if (clearDrafts) try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('litera:progress:')) sessionStorage.removeItem(key) } catch { /* Storage may be unavailable. */ }
+  for (const id of Object.keys(annotationListFilters)) delete annotationListFilters[id]
+  if (clearDrafts) try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('litera:progress:') || key.startsWith('litera:annotations:')) sessionStorage.removeItem(key) } catch { /* Storage may be unavailable. */ }
 }
 // Reorder existing objects only: no activation, routing or PDF lifecycle side effects.
 export function moveReaderTab(id: string, beforeId: string | null) {

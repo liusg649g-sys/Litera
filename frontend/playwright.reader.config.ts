@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 const production = process.env.LITERA_READER_PRODUCTION === '1'
 export default defineConfig({
-  testDir: './e2e', testMatch: process.env.LITERA_READER_PAPER ? /reader-paper\.spec\.ts/ : /reader(?:-ux|-a2|-layout|-thumbnails)?\.spec\.ts/, workers: 1, retries: 0, timeout: 45000,
+  testDir: './e2e', testMatch: process.env.LITERA_READER_PAPER ? /reader-paper\.spec\.ts/ : /reader(?:-ux|-a2|-b1|-layout|-thumbnails)?\.spec\.ts/, workers: 1, retries: 0, timeout: 45000,
   outputDir: './test-results/reader',
   use: { browserName: 'chromium', headless: true, baseURL: 'http://127.0.0.1:5175', viewport: { width:1366,height:768 }, screenshot: 'only-on-failure' },
   webServer: [

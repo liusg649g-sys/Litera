@@ -28,4 +28,4 @@ Change 01 已通过用户功能/UI验收，但阅读仍是浏览器原文件预�
 
 负责人Jensen Zhang。未来影响reader路由、PDF.js/匹配Worker、原progress兼容扩展、annotations/资产/导出增量存储及清理；复用Cookie、Origin/CSRF、稳定documentId和私有content/Range。阶段门槛见design.md/tasks.md。
 
-P3-A1（1.1–1.6）已完成并通过用户实际功能/UI验收；本轮获授权仅实施P3-A2（2.1–2.6），B/C及03–06仍未实现。没有运行Compose、实际业务库迁移、提交/推送/归档。A2进度增量迁移/真实PDF测试及验收步骤见[开发记录](../../../docs/development/p3-a2.md)。
+P3-A1/A2已完成并通过用户实际功能/UI验收；本轮获授权仅实施P3-B1（3.1–3.6），六类文本批注/命令保存/撤销/列表闭环见[B1记录](../../../docs/development/p3-b1.md)。B2/C及03–06仍未实现，没有运行Compose、实际业务库迁移、提交/推送/归档，交付B1后等待用户实际验收。

@@ -55,11 +55,11 @@ test('real upload → local Worker/Canvas/text selection, views, navigation and 
   await page.screenshot({path:'test-results/reader/desktop.png'})
 })
 
-test('tool groups and responsive panels remain honest placeholders',async({page})=>{
+test('B2 tool groups remain unavailable and responsive panels preserve reading',async({page})=>{
   const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('layout',1))).json()
   await page.goto(`/reader/${doc.id}`);await rendered(page,1)
   const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(r.url())})
-  for(const [group,tool] of [['形状','矩形'],['插入','签名'],['批注','高亮']]){
+  for(const [group,tool] of [['形状','矩形'],['插入','签名'],['批注','手绘']]){
     await page.getByRole('button',{name:group,exact:true}).click()
     const button=page.getByRole('button',{name:`${tool}（功能开发中）`,exact:true})
     await expect(button).toHaveAttribute('aria-disabled','true');await button.click({force:true})

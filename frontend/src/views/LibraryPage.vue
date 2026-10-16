@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CORNER_NOTICE_DURATION } from '../notifications'
 import { computed, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
@@ -137,12 +138,15 @@ function readDocument(id: string) { return router.push('/reader/' + encodeURICom
 function dateLabel(value: string | null) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
 function message(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试' }
 function notify(type: 'success' | 'warning' | 'error' | 'info', title: string, text: string, action?: { label: string; run: () => void | Promise<void> }) {
-  const instance = ElNotification({ type, title, position: 'bottom-right', duration: 5000, showClose: true,
+  let dismissTimer: ReturnType<typeof setTimeout> | undefined
+  // Use a fixed deadline: hovering an action must not leave a corner notice open.
+  const instance = ElNotification({ type, title, position: 'bottom-right', duration: 0, showClose: true,
     customClass: 'library-notification',
     message: h('div', [h('p', text), action ? h('button', { class: 'notification-action', onClick: () => { instance.close(); void action.run() } }, action.label) : null]),
-    onClose: () => notifications.delete(instance),
+    onClose: () => { clearTimeout(dismissTimer); notifications.delete(instance) },
   })
   notifications.add(instance)
+  dismissTimer = setTimeout(() => instance.close(), CORNER_NOTICE_DURATION)
 }
 async function loadConfig() {
   configError.value = ''

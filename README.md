@@ -6,11 +6,11 @@
 
 ## 当前进度
 
-P1/P2-A及P2-B功能和UI优化已完成，用户已确认Change 01实际功能/UI验收通过。个人文件夹、标签、组合检索、最近阅读、回收站、恢复和永久删除均接入真实API；失败清理状态持久化并可查询/重试。02 P3-A1已接入自有PDF.js阅读器：真实Canvas/文本层、三种视图/页码、轻量标签及基础布局；P3-A1已通过用户实际验收，P3-A2已实现缩放/搜索/缩略图/大纲及进度恢复，核心功能经用户Docker实际体验；最新UI补充等待验收；批注等后续功能尚未实现，03–06及管理员未实现。默认50 MiB上传、240px可调侧栏、52px品牌栏和可调宽信息面板保留。当前交接与测试证据边界见[HANDOFF](HANDOFF.md)，历史实现见[P2-B记录](docs/development/p2-b.md)。
+Change 01及Change 02 P3-A1/A2（含UI补充）已通过用户实际功能/UI验收。P3-B1已实现六类文本批注、独立CAS/幂等保存、真实补偿撤销重做、右侧批注列表和文献生命周期；本轮交付后等待实际验收，不进入P3-B2。实现、测试证据、手动部署及验收见[B1记录](docs/development/p3-b1.md)和[HANDOFF](HANDOFF.md)。03–06、手绘/形状/插入及带批注导出尚未实现。
 
 开发及测试详情见 [P1 验收记录](docs/development/p1-auth.md)。Docker 拉取、构建和启动由使用者手动执行，开发过程中不自动提交或推送代码。
 
-P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0004_reader_progress，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
+P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0005_annotations，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
 
 已验收的文献库布局沿用[P2-A UI记录](docs/development/p2-a-ui.md)：六列单行省略/浅色Tooltip、阅读/详情/更多菜单、右侧信息与编辑面板和局部草稿确认、右下角5秒通知。P2-B仅补充真实分类、筛选、历史及回收站交互，参考06–13截图。
 
@@ -25,7 +25,6 @@ P2-B局部交互优化见[本轮UI记录](docs/development/p2-b-ui.md)：独立�
 在项目根目录执行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
 python scripts\init_env.py
 docker compose up -d --build --wait
 ```
@@ -36,10 +35,9 @@ docker compose up -d --build --wait
 
 ### 后续启动与更新
 
-若已有 .env 和数据库卷，无需重新生成配置。启动 Docker Desktop 后，在 CMD 执行：
+若已有 .env 和数据库卷，无需重新生成配置。启动 Docker Desktop 后，在项目根目录下执行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
 docker compose up -d --build --wait
 ```
 
@@ -77,7 +75,7 @@ P2-A增加`MAX_UPLOAD_BYTES`（默认52428800，50 MiB）与`PDF_STORAGE_ROOT`�
 本地后端测试（独立临时SQLite库，走真实迁移，不触碰开发MySQL数据）：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\backend
+cd backend
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 set TEST_DATABASE_URL=
@@ -87,7 +85,6 @@ set TEST_DATABASE_URL=
 MySQL版本测试由你在Compose服务启动后手动执行，使用独立 `litera_test` 数据库：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
 docker compose exec -T api python -m pytest -q
 ```
 
@@ -96,7 +93,7 @@ docker compose exec -T api python -m pytest -q
 前端构建、基础测试与浏览器验收（需要 Node 24+；端到端测试需要已启动的服务）：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\frontend
+cd frontend
 npm ci
 npm run build
 npm test
@@ -108,10 +105,9 @@ npm run test:e2e
 
 ## 可选：本地前端热更新
 
-需要 Node 24+，后端仍由用户手动启动的 Compose 服务提供。先将 .env 的 PUBLIC_ORIGIN 改为 `http://localhost:5173`，随后在 CMD 执行：
+需要 Node 24+，后端仍由用户手动启动的 Compose 服务提供。先将 .env 的 PUBLIC_ORIGIN 改为 `http://localhost:5173`，随后在根目录下执行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
 docker compose up -d --build --wait
 cd frontend
 npm ci

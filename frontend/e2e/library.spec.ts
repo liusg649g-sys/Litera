@@ -263,7 +263,7 @@ test('responsive drawer preserves draft and supports keyboard and backdrop cance
   await expect(panel).toHaveCount(0)
 })
 
-test('bottom-right upload notifications offer real actions, retry and five-second dismissal', async ({ page }) => {
+test('bottom-right upload notifications offer real actions, retry and three-second dismissal', async ({ page }) => {
   await openLibrary(page)
   const headingY = (await page.getByRole('heading', { name: '我的文献', exact: true }).boundingBox())!.y
   const bytes = pdf('notification')
@@ -280,8 +280,8 @@ test('bottom-right upload notifications offer real actions, retry and five-secon
   await page.getByRole('button', { name: '关闭文献信息', exact: true }).click()
   await page.getByLabel('选择本地 PDF').setInputFiles({ name: '再次上传.pdf', mimeType: 'application/pdf', buffer: bytes })
   await expect(notification.getByRole('button', { name: '查看已有文献' })).toBeVisible()
-  await page.mouse.move(0, 0)
-  await expect(notification).toHaveCount(0, { timeout: 7000 })
+  await notification.filter({ hasText: '查看已有文献' }).hover()
+  await expect(notification).toHaveCount(0, { timeout: 4200 })
   await page.route('**/api/v1/documents', route => route.request().method() === 'POST' ? route.abort() : route.continue())
   await page.getByLabel('选择本地 PDF').setInputFiles({ name: '失败重试.pdf', mimeType: 'application/pdf', buffer: pdf('retry notification') })
   await expect(notification.getByRole('button', { name: '重试上传' })).toBeVisible()

@@ -1,6 +1,19 @@
-# 统一 API 与跨模块契约 v1（Change 01、02 A1/A2 已实现，后续规划）
+# 统一 API 与跨模块契约 v1（Change 01、02 A1/A2/B1 已实现，后续规划）
 
-本文件为统一API契约。Change 01 的认证、文献、分类、检索、最近阅读及回收站已实现并通过用户功能/UI验收；02 A2 的实际页码/缩放/模式已实现；标注及03–06接口仍为规划。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（实际 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
+## P3-B1 实现约束（2026-10-15）
+
+生产者：backend/app/annotations.py；消费者：frontend/src/reader/annotations.ts、PdfAnnotations.vue、AnnotationList.vue。保留后文完整14类目标契约，实际B1只开放六类，不开放资产/导出。
+
+- geometry=text的positions必须与position完全相同，非空逐页rects/textQuote且selectedText非空；起始pageNumber必须一致，服务端用原PDF真实页数验证全部子页。四种文本标记只用text；comment用text或anchor；freeText只用box（rotation=0），坐标始终是未旋转CropBox左上归一化值，不能越界或含NaN/Infinity。
+- `color`必为#RRGGBB（默认#F5D547），透明度独立；style只接受stroke/fill、opacity(0,1]、lineWidth 0.25–20pt、fontSize 6–144pt，默认1/1/14。PATCH changes允许color/content/style/geometry/zIndex，style子字段合并，type/id/文本锚点不可修改，非文本几何可在原页移动/改框。comment/freeText正文非空，纯文本由Vue按文本输出，不执行HTML；单字段最多20k字符、单对象序列化最多1MiB、单篇最多10k活动对象，不截断。
+- POST默认生成ID，也接受客户端ID；未知字段、B2类型、assetId非null、非法页码/几何/属性返回422。起始集合revision为0；任何写入以commandId+baseRevision提交，PATCH/DELETE另携带对象version。陈旧集合/对象、同commandId不同请求、无效恢复返回409；同用户错文献/他人文献、对象或收据404，缺会话401，Origin/CSRF无效403。
+- DELETE返回annotation=null并将对象保留为墓碑、version+1。restore提交原DTO快照，要求同owner/document/ID、原快照字段及`快照.version+1 == 墓碑.version`；恢复不覆盖活动对象，成功后对象再version+1。创建、编辑、删除、恢复均原子递增annotationRevision并保存完整MutationResult收据；重复同请求不改变版本。收据24小时有效，GET过期返回404 COMMAND_NOT_FOUND，旧baseRevision不会被盲重放。
+- 客户端每文献独立1秒自动保存串行队列，draft/sending/confirmed/failed/conflict分开；请求8秒超时。任何已准备命令先按ID核对收据，结果未知的重试保留原commandId/请求体。失败停止依赖写入、保留sessionStorage草稿并可重试/导出；409不自动改用新版revision覆盖，显式载入服务端时备份草稿、清撤销历史，备份有导出入口。无自动合并/导入JSON功能；可根据保留草稿人工核对重建需要的修改。
+- 已保存undo/redo为真实补偿命令，恢复原ID；最多100条，不跨刷新。切文献、关闭活动标签、回库先flush，失败保留当前页，也可显式保留原待确认命令到本地后返回库；编辑窗未确认则阻止离开，浏览器刷新/关闭有beforeunload提示，已入队草稿可在刷新后恢复。输入/可编辑元素使用自身撤销；进度队列及版本独立。退出清理私有草稿，在途回执不会在退出后重新写入本地草稿。
+
+实现和精度/测试边界见[B1记录](../development/p3-b1.md)。下文“仍为规划”“仅A2”等历史描述由本节覆盖，仅适用于尚未实现的B2/C及03–06部分。
+
+本文件为统一API契约。Change 01 及02 A1/A2已通过用户功能/UI验收；02 B1已实现六类文本批注接口，资产/导出及03–06接口仍为规划。API 前缀 `/api/v1`；JSON 使用 camelCase、UTF-8。所有 ID 为不透明 string（实际 UUID），时间为 UTC ISO 8601，展示使用本地时区；物理 PDF 页码从 1 开始，不等同印刷页标签。
 
 ## P3-A1已实现接入（2026-10-15）
 
@@ -91,6 +104,8 @@ MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；
 
 对象/资产限额、坐标、幂等/收据保留、清理和导出资源预算见02设计。软删保留但普通访问404、恢复同ID，永久清理接原cleanup_jobs且失败可重试。导出仅已保存一致快照，不混合修订；“第三方可见”与“第三方可编辑”分开验收，不承诺全类型原生可编辑。
 
+上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；reader-assets 和导出仍不可调用。B1输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
+
 ## Change 03–06：预期接口，全部待实现
 
 | 模块/方法/路径 | 输入 | 输出/约束 |
@@ -109,7 +124,7 @@ MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；
 
 ## 核心 DTO（TypeScript 文档示例）
 
-UserDTO、DocumentDTO、分类和完整阅读进度已有实现；ReaderContext/SelectionPosition/NoteDraft/Citation源码见frontend/src/reader/context.ts（后两者仅类型），ProgressDTO见reader/progress.ts。AnnotationDTO及03–06业务DTO仍为目标契约。ProgressDTO.zoom对外为number/null；现有ORM为nullable VARCHAR(20)，读取时转float，02应明确合法范围及写入转换，不重复创建reading_progress。
+UserDTO、DocumentDTO、分类和完整阅读进度已有实现；ReaderContext/SelectionPosition/NoteDraft/Citation源码见frontend/src/reader/context.ts（后两者仅类型），ProgressDTO见reader/progress.ts。六类AnnotationDTO源码见reader/annotations.ts，其他对象及03–06业务DTO仍为目标契约。ProgressDTO.zoom对外为number/null，ORM为nullable VARCHAR(20)，合法倍率0.5–5，不重复创建reading_progress。
 
 ```typescript
 interface UserDTO { id: string; email: string; displayName: string; createdAt: string }
@@ -139,7 +154,7 @@ type ReaderViewMode = 'continuous'|'single'|'spread';
 type ReaderZoomMode = 'custom'|'fit-width'|'fit-height';
 type AnnotationType = 'highlight'|'underline'|'squiggly'|'strikeout'|'comment'
   |'freeText'|'ink'|'marker'|'rectangle'|'circle'|'ellipse'|'signature'|'watermark'|'image';
-// 全部坐标相对未旋转CropBox；笔宽/字号为PDF point。仅文档类型，尚无源码。
+// 全部坐标相对未旋转CropBox；笔宽/字号为PDF point。B1六类已有源码，其他类型待B2。
 type AnnotationGeometry =
   | { kind:'text'; positions:SelectionPosition[] }
   | { kind:'box'; pageNumber:number; rect:NormalizedRect; rotation:number }
@@ -207,3 +222,7 @@ TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code poin
 生产者为ReaderPage真实PDF文本选区、页码/文献生命周期；消费者为后续03选区翻译、04笔记来源、06上下文，05仅复用documentId/物理页码。`subscribeReaderContext(callback)`返回取消订阅函数；事件为context-change、selection-change、document-change、context-cleared。也提供`window`上的`litera:reader:<事件名>` CustomEvent，detail为不可变快照，清理事件detail=null。`readerContext`为只读快照ref；消费者必须核对documentId+contextRevision，不能把上下文当权限凭证。跨页选区pageNumber取起始页、每页rects/textQuote；取消选区后selectedText=''且selectionPosition=null。
 
 进度失败保留本地草稿并阻止静默路由离开；若PDF本身加载失败则保留草稿并允许回库，重放设置必须等待真实目标帧成功；sessionStorage只存用户/文献隔离的页码/设置，不存PDF或选中文本，退出清理。409读新版后明确选择载入服务端/保存本地；网络超时若结果未知，重试旧版本会409，不能自动用新版本覆盖。请求保护和后端owner校验与01一致。
+
+### P3-B1选区精度兼容补充（2026-10-16）
+
+SelectionPosition的每页对象新增可选`textRanges: [{item,start,end}]`，item为PDF.js TextLayer文本item索引，start/end为该item中UTF-16字符偏移，左闭右开，严格整数、item/start>=0且end>start，最多2000段。原rect可选`baseline`为字体升部/完整行框比例（有限0–1）；原x/y/width/height规则不变。四类文本标记共用这些字段，geometry.positions与position仍须完全一致。缺省时不序列化新字段、不强制补null，旧对象/命令墓碑与恢复仍兼容，非法范围422。字段直接存原JSON，不新增表/列/迁移；端点精度来自当前原生Range，不从摘要反推。保存接口/CAS/commandId/收据及权限无变化。

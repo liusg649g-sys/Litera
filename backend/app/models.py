@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, String, Integer, BigInteger, JSON, Text, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
-from sqlalchemy.dialects.mysql import DATETIME
+from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
 library_time = DateTime().with_variant(DATETIME(fsp=6), "mysql")
 
 class User(Base):
@@ -112,3 +112,43 @@ class CleanupJob(Base):
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+class Annotation(Base):
+    __tablename__ = "annotations"
+    __table_args__ = (Index("ix_annotations_owner_document_page", "owner_id", "document_id", "page_number"),
+        Index("ix_annotations_document_updated", "document_id", "updated_at"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    type: Mapped[str] = mapped_column(String(24), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[list | None] = mapped_column(JSON)
+    geometry: Mapped[dict] = mapped_column(JSON, nullable=False)
+    style: Mapped[dict] = mapped_column(JSON, nullable=False)
+    selected_text: Mapped[str | None] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"))
+    content: Mapped[str | None] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"))
+    color: Mapped[str] = mapped_column(String(7), nullable=False)
+    asset_id: Mapped[str | None] = mapped_column(String(36))
+    z_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+    # Tombstones authenticate restore and retain monotonic object versions.
+    deleted_at: Mapped[datetime | None] = mapped_column(library_time)
+
+class DocumentReaderState(Base):
+    __tablename__ = "document_reader_state"
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    annotation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+
+class AnnotationCommandReceipt(Base):
+    __tablename__ = "annotation_command_receipts"
+    __table_args__ = (Index("ix_annotation_receipts_expiry", "expires_at"),)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    command_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(library_time, nullable=False)

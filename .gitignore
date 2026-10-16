@@ -12,5 +12,6 @@
 **/test-results/
 *.pyc
 *.db
+.cache/
 /storage/
 /backend/storage/

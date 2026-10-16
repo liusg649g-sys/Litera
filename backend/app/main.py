@@ -19,6 +19,7 @@ from .models import LoginSession, User
 from .schemas import LoginInput, ProfileInput, RegisterInput, user_dto
 from .security import csrf_token, dummy_hash, password_hasher, token_hash, verify_password
 from .documents import UploadLimitMiddleware, create_document_router
+from .annotations import create_annotation_router
 
 settings = get_settings()
 app = FastAPI(title="Litera API", version="0.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -171,3 +172,4 @@ def update_me(payload: ProfileInput, session: LoginSession = Depends(require_csr
     return user_dto(user)
 
 app.include_router(create_document_router(current_session, require_csrf))
+app.include_router(create_annotation_router(current_session, require_csrf))

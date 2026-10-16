@@ -34,7 +34,7 @@
 .reader-secondary { background:#fcfcfd; gap:5px }
 .reader-secondary button { padding:7px 8px; white-space:nowrap }
 .reader-toolbar-rule { height:24px; width:1px; background:var(--litera-border); margin:0 8px; flex-shrink:0 }
-.reader-secondary .reader-color { width:21px; height:21px; padding:0; border:3px solid white; outline:1px solid #d7dbe0; margin:0 3px; background:var(--swatch) }
+.reader-secondary .reader-color, .annotation-editor-colors .reader-color { width:21px; height:21px; padding:0; border:3px solid white; outline:1px solid #d7dbe0; margin:0 3px; background:var(--swatch) }
 .reader-stage-hint { margin-left:auto; color:#969ba2; white-space:nowrap; font-size:12px }
 .reader-notice { padding:8px 18px; background:#fff9ed; color:#85601d; display:flex; align-items:center; justify-content:space-between; flex-shrink:0 }
 .reader-notice button { padding:0 6px }
@@ -48,10 +48,55 @@
 .pdf-pages { width:max-content; min-width:100%; padding:var(--reader-page-padding); display:flex; gap:var(--reader-page-gap); align-items:center; flex-direction:column }
 /* pdf_viewer.css also defines global .spread margins (3.5px each). */
 .pdf-pages.spread { margin:0; flex-direction:row; justify-content:safe center; align-items:flex-start }
-.pdf-page { flex-shrink:0; position:relative; background:white; box-shadow:0 1px 5px #20253026; overflow:clip }
+.pdf-page { --scale-round-x:1px; --scale-round-y:1px; flex-shrink:0; position:relative; background:white; box-shadow:0 1px 5px #20253026; overflow:clip }
 .pdf-page canvas { display:block; width:100%; height:100% }
 .pdf-page .textLayer { z-index:2 }
 .reader-object-layer { position:absolute; inset:0; pointer-events:none; z-index:3 }
+.reader-workspace { position:relative }
+.reader-workspace svg.annotation-overlay { width:100%; height:100%; overflow:visible }
+.annotation-overlay .annotation-hit { pointer-events:all; cursor:pointer; touch-action:none }
+.annotation-overlay .annotation-text-mark { pointer-events:none; touch-action:auto }
+.annotation-overlay .annotation-text-mark.erasable, .annotation-overlay .annotation-comment-icon { pointer-events:all; cursor:pointer }
+.annotation-overlay .annotation-selected polygon { stroke:#9b000066; stroke-dasharray:3 3 }
+.annotation-overlay .drag-preview { opacity:.7 }
+.annotation-dragging, .annotation-dragging * { user-select:none !important; cursor:grabbing !important }
+.pdf-reading-region { display:flex; flex:1; min-width:0; min-height:0; position:relative }
+.annotation-saved-toast { position:absolute; top:12px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:8px; padding:10px 16px; background:white; color:#26332c; border-radius:8px; box-shadow:0 3px 16px #0002; z-index:8; pointer-events:none; white-space:nowrap }
+.annotation-overlay.placing { pointer-events:all; cursor:crosshair }
+.annotation-resize { cursor:nwse-resize }
+.annotation-free-text { white-space:pre-wrap; overflow-wrap:anywhere; width:100%; height:100%; background:#fffdf4cc; pointer-events:none; font-family:Arial,'Microsoft YaHei',sans-serif }
+.annotation-save-status { position:absolute; bottom:12px; right:18px; padding:4px 9px; background:#ffffffed; border:1px solid var(--litera-border); border-radius:5px; z-index:5; color:var(--litera-muted); font-size:11px }
+.annotation-error { flex-wrap:wrap; justify-content:flex-start; gap:6px }
+.reader-secondary input[type=color], .annotation-editor-colors input[type=color] { width:24px; height:24px; padding:0; border:1px solid var(--litera-border); background:white; flex-shrink:0 }
+.annotation-list { display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; padding:8px 14px 14px }
+.annotation-list-controls { display:flex; flex-wrap:wrap; flex-shrink:0; gap:10px; margin-bottom:16px; background:white; padding:8px 0 }
+.annotation-list-controls strong { width:100% }
+.reader-panel.right > header { position:sticky; top:0; background:white; z-index:2 }
+.annotation-list-items { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin }
+.annotation-list-controls label { display:flex; gap:5px; align-items:center }
+.annotation-list select { border:1px solid var(--litera-border); border-radius:4px; padding:5px; font:inherit; background:white }
+.annotation-card { border:1px solid var(--litera-border); border-radius:6px; margin:10px 0; overflow:hidden }
+.annotation-card.selected { border-color:var(--litera-primary) }
+.reader-workspace .annotation-card-main { display:flex; flex-wrap:wrap; width:100%; text-align:left; justify-content:flex-start; padding:12px; font-weight:400 }
+.annotation-dot { width:10px; height:10px; border:1px solid #0002; border-radius:50%; flex-shrink:0 }
+.annotation-summary { width:100%; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; white-space:pre-wrap; line-height:1.5 }
+.annotation-card time { color:var(--litera-muted); font-size:11px }
+.annotation-card-actions { display:flex; justify-content:flex-end; border-top:1px solid var(--litera-border) }
+.annotation-editor { width:360px; max-width:calc(100vw - 32px); max-height:calc(100dvh - 32px); padding:18px; border:1px solid var(--litera-border); border-radius:8px; color:var(--litera-text); font-size:12px; box-shadow:0 8px 40px #0003; overflow:auto }
+.annotation-editor::backdrop { background:#15202d55 }
+.annotation-editor header { font-size:15px; margin-bottom:14px }
+.annotation-editor form label { display:flex; align-items:center; gap:10px; margin:12px 0 }
+.annotation-editor form label:has(textarea) { display:block }
+.annotation-editor-colors { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:12px 0 }
+.annotation-editor-colors button.reader-color { margin:0; background:var(--swatch) }
+.annotation-editor-colors .reader-color[aria-pressed=true] { outline:2px solid var(--litera-primary); outline-offset:1px }
+.annotation-editor form .annotation-editor-colors label { margin:0; gap:6px }
+.annotation-editor textarea { display:block; width:100%; margin-top:8px; padding:8px; font:inherit; resize:vertical; border:1px solid var(--litera-border); border-radius:4px }
+.annotation-editor textarea:focus-visible { outline:2px solid var(--litera-primary); outline-offset:1px }
+.reader-workspace .annotation-editor .el-button--primary { background:var(--litera-primary); border-color:var(--litera-primary); color:white }
+.annotation-editor input[type=number] { width:90px; padding:5px; border:1px solid var(--litera-border); border-radius:4px }
+.annotation-editor-quote { max-height:100px; overflow:auto; color:var(--litera-muted) }
+.annotation-editor-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px }
 .pdf-page[data-status="等待渲染"],.pdf-page[data-status="正在渲染"] { background:#f7f8fa }
 .pdf-page-loading { position:absolute; top:10px; right:10px; width:12px; height:12px; border:1.5px solid var(--litera-border); border-top-color:var(--litera-muted); border-radius:50%; animation:reader-spin 1s linear infinite; pointer-events:none }
 .reader-panel-resizer { width:6px; margin-left:-3px; margin-right:-3px; z-index:1; flex-shrink:0; cursor:col-resize; touch-action:none }
@@ -65,7 +110,11 @@
 .reader-panel-placeholder { color:var(--litera-muted); line-height:1.9; padding:12px 18px }
 .reader-panel-dialog { position:fixed; height:100dvh; max-height:100dvh; max-width:calc(100vw - 32px); margin:0; padding:0; border:0; top:0; bottom:0 }
 .reader-panel-dialog.right { left:auto; right:0 }
+.reader-panel-dialog:not(:modal) { z-index:10 }
 .reader-panel-dialog::backdrop { background:#15202d44 }
+.reader-panel.reader-panel-fixed { flex-direction:column; overflow:hidden }
+aside.reader-panel-fixed, dialog.reader-panel-fixed[open] { display:flex }
+.reader-panel.reader-panel-fixed > header { position:static; flex-shrink:0 }
 .reader-status { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center; color:var(--litera-muted) }
 .reader-status h1 { font-size:20px; font-weight:550; color:var(--litera-text); margin:18px 0 6px }
 .reader-status p { line-height:1.8 }
@@ -98,3 +147,21 @@
 .pdf-search-layer { position:absolute; inset:0; pointer-events:none; z-index:1 }
 .pdf-search-layer span { position:absolute; background:#ffde4166 }
 .pdf-search-layer span.current { background:#ff92368c; outline:1px solid #bc6200 }
+
+/* B1 inline editing: HTML inputs share the same PDF viewport transform. */
+.annotation-properties { border:0; padding:0; margin:0; min-width:0 }
+.annotation-properties label { display:inline-flex; align-items:center; gap:6px; margin:4px 10px 4px 0 }
+.annotation-properties input[type=number] { width:64px; padding:4px; border:1px solid var(--litera-border); border-radius:4px }
+.annotation-inline-form { padding:0 12px 12px }
+.annotation-inline-form textarea { width:100%; box-sizing:border-box; min-height:90px; resize:vertical; padding:6px; font:inherit; border:1px solid var(--litera-border); border-radius:4px }
+.annotation-inline-form textarea:focus-visible,.free-text-input:focus-visible { outline:1px solid var(--litera-primary) }
+.annotation-inline-form .annotation-editor-actions,.free-text-controls .annotation-editor-actions { margin-top:6px }
+.annotation-inline-form button[type=submit],.free-text-controls button[type=submit] { color:var(--litera-primary); font-weight:600 }
+.annotation-free-text { box-sizing:border-box; margin:0; padding:0 0 0 var(--free-text-padding,3px); border:0; border-radius:0; letter-spacing:normal; text-align:left; overflow:auto; scrollbar-width:thin }
+.annotation-overlay .free-text-input { display:block; pointer-events:auto; resize:none; user-select:text; touch-action:auto }
+.free-text-move { cursor:move }
+.free-text-controls { position:absolute; z-index:5; width:292px; box-sizing:border-box; padding:8px; background:white; border:1px solid var(--litera-border); border-radius:6px; box-shadow:0 2px 8px #0002; font-size:12px }
+.free-text-controls .annotation-editor-colors { gap:6px; margin:0 0 5px }
+.free-text-overflow-hint { color:var(--litera-muted); font-size:11px; margin:4px 0 }
+.free-text-display { width:100%; height:100%; position:relative; pointer-events:none }
+.free-text-overflow { position:absolute; bottom:0; right:0; padding:0 3px; background:white; color:var(--litera-primary); font:bold 12px Arial }

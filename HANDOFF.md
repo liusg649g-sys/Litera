@@ -1,30 +1,53 @@
 # Litera 开发交接
 
-更新时间：2026-10-15。项目根目录：D:\PKU\Projects\Litera。
+更新时间：2026-10-16。项目根目录：D:\PKU\Projects\Litera。
 
 ## 当前停止点
 
-最新局部补充为缩略图清晰度：原128px CSS宽同时只用128px backing store，忽略DPR。仅PdfThumbnail按实际CSS宽×DPR（最高2）渲染，保留128px视觉尺寸、原PDF比例、按需缓存/离屏释放和取消旧任务；主PDF渲染/缩放/选区未改。验证和截图见[A2 UI补充的缩略图记录](docs/development/p3-a2-ux.md)。仍等待用户实际验收，不进入P3-B1，不运行Docker/commit/push。
+2026-10-16阅读组自由文本补充：单击只打开/定位批注列表，隐藏对象框和控制点、禁止移动/改框；双击先切批注组再原位编辑，短暂区分单/双击以避免打开侧栏重排导致双击落空。顶部拖动条改为35%不透明度，显示/输入共用约3屏幕px左留白，不改几何或保存数据。最终类型/构建通过，生产真实PDF定向3个不同用例分批通过（2+1）、OpenSpec严格6/6；无后端/迁移变化，仍18/36，仅手动重建nginx并Ctrl+F5。详见B1记录末节，等待用户实际验收。
 
+2026-10-16原位编辑补充：注释图标只联动列表，注释新建/编辑在原卡片内完成；自由文本新建及双击原页输入、单击显示八方向控制点，拖动实时预览，字号与框尺寸独立；统一✓保存/×取消、失败保留与补偿取消、切文献/关面板/切工具保护。沿用原box/字号字段及CAS/commandId队列，无API、后端或迁移修改。类型/构建、Vitest50/50、生产真实PDF阅读器全量32/32通过（隔离SQLite），最后工具保护定向验证见B1记录；未跑真实MySQL，仍18/36，仅手动重建nginx并Ctrl+F5，等待实际验收，不进入B2。
 
-最新工作为P3-A2的UI/UX补充，仍12/36、不新增任务。用户已在Docker体验A2核心缩放/导航/搜索/进度并确认整体符合预期；本轮处理48/40/40/40px顶部栏、移除Footer、全站共享20px品牌/12px基础字号、SVG箭头、鼠标/Tab焦点区分和12px阅读间距。双页多余横滚的实际原因是PDF.js全局.spread左右各3.5px margin，已局部清零，保留真正超宽滚动。开发/测试及仅重建nginx的CMD步骤见[A2 UI补充](docs/development/p3-a2-ux.md)。本轮最终：类型/生产构建通过、Vitest34/34、生产阅读器22项（9+5+8）、文献库22项（12+10）及OpenSpec严格6/6通过；前端补充等待用户验收，不进入B1；后端/数据库未改，Docker未代执行。
+2026-10-16右下角通知补充：按用户最新要求，阅读器和文献库所有右下角浮动提示统一3秒自动消失，悬停也不延长；覆盖历史文献库5秒及批注草稿常驻提示行为。隐藏通知不清除草稿，批注列表保留立即保存/导出备份入口，原失败/冲突错误栏继续显示；顶部保存成功仍为1秒。无API/数据库变化，仅需手动重建nginx并Ctrl+F5；仍18/36。测试结果见B1记录末节。
 
-Change 01 与 Change 02 P3-A1 已完成开发、自动化测试及用户实际功能/UI验收。A1 的共享标签、拖动排序、三视图、工具栏和可调左导航保留。最近阅读早已在 A1 接入首个真实页面成功后的打开记录。
+2026-10-16阅读模式对象点击补充：点击注释/自由文本只联动右侧列表高亮，不自动打开编辑窗；仅批注组直接点击编辑，列表编辑按钮保持可用，橡皮擦也限定批注组。类型/构建及真实PDF定向2/2通过，只需手动重建nginx并Ctrl+F5；无API/数据库变化，仍18/36。
 
-本轮仅完成 `02-pdf-reader` P3-A2（2.1–2.6），总体12/36：50%–500%缩放/fit/Ctrl+wheel、真实缩略图与Outline、PDF文本搜索、阅读进度恢复/CAS/失败草稿及真实公共选区。交付与手动验收见[P3-A2记录](docs/development/p3-a2.md)。已停止等待用户验收，不自动进入P3-B1。
+2026-10-16注释定位补充：列表导航改为按标注实际SVG显示边界预留PAGE_PADDING=12px，避免气泡尾尖对齐导致主体被顶部裁掉；所有标注统一，保留几何点回退，搜索/大纲不变。类型/构建、真实PDF定位/跨页Rotate定向2/2通过，间距按约12px（3px内偏差）验证。本次只改前端，手动重建nginx并Ctrl+F5，仍18/36。
 
-本轮最终证据：vue-tsc/生产构建通过，Vitest34/34，后端pytest91/91；生产阅读器19项分套件通过（6+5+8），文献库22项通过（12+10）；OpenSpec严格6/6、issues=[]。中断/worker异常的长批次不计全通过，细节见A2记录。
+2026-10-16高亮图标补充：改为黄色背景块+A字形+文字定位竖线，与荧光笔/橡皮擦区分；只改项目内SVG，高亮功能不变。类型/构建通过，仅需手动重建nginx并Ctrl+F5，仍18/36。
 
-本轮后端使用隔离临时SQLite迁移/API测试，另验证MySQL增量DDL编译；没有运行真实MySQL集成、Docker Compose、实际业务库迁移、commit/push或OpenSpec归档。旧A1自动化/部署MIME排障记录见[A1](docs/development/p3-a1.md)、[A1交互](docs/development/p3-a1-ux.md)，历史“待用户体验”与“完整进度待A2”只描述当时状态。
+2026-10-16上标对齐补充：四类文本标记新增公共显示行排版，上标随正文统一高亮范围，底线/波浪/删除线按正文行基准连续绘制；旧分段标注直接兼容，原选区/JSON/数据库不改写。类型/构建、单测48/48、真实PDF定向3/3通过（上标、精细选择及跨页/Rotate），已检查四类截图。本次仅前端，手动重建nginx并Ctrl+F5即可；仍18/36，等待原论文实际验收。详见B1记录末节。
 
-下一会话先读本文件、[README](README.md)、[02设计](openspec/changes/02-pdf-reader/design.md)及[P3-A2记录](docs/development/p3-a2.md)。P3-B1须用户另行授权。01任务仍33/34：5.B1沿用用户勾选，5.A1只剩专项MySQL证据，不再等待功能/UI验收。主规格未同步、change未归档。
+2026-10-16编辑颜色补充：所有批注编辑窗增加与顶部共用的黄/红/绿/蓝四种常用色，保留自定义与选中态，仅修改草稿、保存时提交。类型/构建及生产真实PDF定向2/2通过（六类颜色与窄屏）。只需手动重建nginx并Ctrl+F5；无后端/迁移变化，仍18/36，等待用户验收。详见B1记录末节。
+
+2026-10-16最新补充：按用户实际截图完成B1八项交互/视觉修复。当前Range精细选择/UTF-16偏移、公共同行几何合并、标记穿透与框退出、字体比例定位及平滑波浪、语义图标、气泡锚点和实时拖拽/取消、顶部居中1秒保存成功通知均已实现；原保存/CAS/收据/补偿撤销沿用。annotations.py仅兼容校验原JSON的可选textRanges与rect.baseline，**无新迁移**。本轮最终类型/构建通过、Vitest46/46、pytest123/123（隔离SQLite）、生产阅读器30个不同用例分批通过、文献库额外冒烟5/5；后续补记见[B1八项修复记录](docs/development/p3-b1.md)。原论文Docker体验及真实MySQL待用户验收。需手动同步重建api/nginx并Ctrl+F5；本轮未运行Compose/业务库迁移/提交。仍18/36，B2/C未启动。
+
+2026-10-16局部UI补充：保留批注列表8px紧凑顶部间距，标题/数量/排序/筛选固定，下方条目独立滚动；选中定位只滚动条目区。ReaderPanel固定内容布局仅作用批注列表，搜索/左导航保持原行为。类型/构建及生产真实PDF定向2/2通过，验证滚动时控件/PDF位置不变、搜索切换及窄屏编辑。仅前端组件/CSS，已部署B1时本次只需手动重建nginx并Ctrl+F5，详见[B1记录末节](docs/development/p3-b1.md)。仍18/36、等待实际验收，不进入B2。
+
+Change 01、02 P3-A1和P3-A2（含UI及缩略图补充）均已通过用户实际功能/UI验收。本轮仅获授权实施02-pdf-reader的P3-B1（tasks 3.1–3.6），六类文本批注、真实持久化/补偿撤销、列表及生命周期已完成开发与自动化验证，18/36。完成后停止等待B1实际验收，不自动进入B2/C1/C2。
+
+最新实现与Windows CMD部署/浏览器验收见[docs/development/p3-b1.md](docs/development/p3-b1.md)。新增0005_annotations接0004，保留原账号/documentId/题录/PDF/progress；三张新表为annotations/document_reader_state/annotation_command_receipts。原件只读；集合revision/对象version与题录、progress独立；新增关联纳入原cleanup_jobs失败/重试事务。B2资产和03–06表未建。
+
+前端复用PdfPage/context真实选区，新PdfAnnotations独立SVG及同viewport，尊重原PDF自带朝向/CropBox，不提供页面旋转功能；页点注释/自由文本可移动、文本框可改框。reader/annotations.ts按文献串行保存，超时查收据、失败保留草稿、已存undo/redo发真实补偿。右侧AnnotationList支持双向定位/排序/筛选，窄屏编辑使用原生顶层dialog。草稿失败阻止路由/活动标签关闭，刷新恢复待确认命令；409不自动覆盖服务端，可导出及显式载入服务端并保留可导出的备份。
+
+本轮类型/生产构建通过、Vitest43/43、后端pytest122/122（临时SQLite）、生产阅读器29项分批通过（11+18）、文献库22项分批通过（5+5+12）、OpenSpec严格6/6；MySQL仅离线DDL，真实MySQL集成未运行。完整证据及失败批次边界见B1记录。历史A1/A2测试及其“待验收/不进入B1”描述仅对应当时阶段，当前以本段及用户最新授权为准。Change 01任务仍33/34，5.A1专项MySQL补证边界不变。
+
+没有运行Docker Compose、业务库迁移、Git commit/push、OpenSpec sync/archive。保留工作区已有修改；需要用户手动重新构建API和前端（已有.env无需初始化）：
+
+```cmd
+cd /d D:\PKU\Projects\Litera
+docker compose up -d --build --wait
+docker compose ps
+```
+
+API启动会自动增量迁移到0005；不要删库/卷或重新上传原PDF。完成本轮后只等待用户实际验收。
 
 ## 架构与运行
 
 - B/S：Vue 3 + TypeScript + Element Plus；FastAPI + SQLAlchemy/Alembic；MySQL 8.4；Compose三服务。
 - Nginx为同源唯一入口，前端固定/api/v1；API/数据库在内网，PDF私有卷仅API挂载。
 - 前端依赖锁于frontend/package-lock.json；后端锁于backend/requirements.txt；宿主开发Node 24+、Python 3.12。
-- 当前迁移链0001_auth → 0002_documents → 0003_library → 0004_reader_progress，API启动自动alembic upgrade head。
+- 当前迁移链0001_auth → 0002_documents → 0003_library → 0004_reader_progress → 0005_annotations，API启动自动alembic upgrade head。
 - 增量升级保留用户、documentId、题录和PDF存储键，不重建已有业务表。
 - 默认上传50 MiB（MAX_UPLOAD_BYTES=52428800），PDF_STORAGE_ROOT容器默认/data/pdfs。
 - .env由scripts/init_env.py生成且不覆盖已有文件；不要提交会话/数据库秘密。
@@ -48,7 +71,7 @@ docker compose ps
 | Change / 负责人 | 状态 |
 | --- | --- |
 | 01-literature-management / Jensen Zhang | 功能及UI已验收；33/34，专项MySQL补证；未归档 |
-| 02-pdf-reader / Jensen Zhang | P3-A1用户已验收；P3-A2完成，12/36，等待用户手动验收 |
+| 02-pdf-reader / Jensen Zhang | P3-A1/A2用户已验收；P3-B1已实现，等待用户实际验收 |
 | 03-translation / Siguo Liu | 规划完成，0/6；未实现 |
 | 04-literature-notes / Siguo Liu | 规划完成，0/6；未实现 |
 | 05-metadata-extraction / Jialu Ma | 规划完成，0/7；未实现 |
@@ -87,7 +110,7 @@ docker compose ps
 - GET/PATCH /api/v1/documents/{id}复用题录version；content?download=true用于下载。
 - GET/PUT /documents/{id}/progress复用阅读记录；PUT {}兼容旧打开事件；A2扩展页码/倍率/模式及独立progress.version CAS，详见API契约。
 - GET /reading-history固定最近打开倒序；列表/下载/GET内容不更新阅读记录。
-- documents/document_files/folders/tags/document_tags/reading_progress/cleanup_jobs已建；annotations尚未建。
+- documents/document_files/folders/tags/document_tags/reading_progress/cleanup_jobs已建；B1已新增annotations/document_reader_state/annotation_command_receipts。
 - 公开DTO无ownerId/storageKey，嵌套ID仍校验归属；他人/已删除文献404，写请求需要Origin/CSRF。
 - API、模型和扩展契约见[API](docs/design/api-contracts.md)、[模型](docs/design/data-model.md)、[模块边界](docs/design/module-dependencies.md)。
 
@@ -97,7 +120,7 @@ docker compose ps
 - 历史完整文献库Playwright：真实HTTP/SQLite/PDF/Vite 21/21；认证UI 10/10。
 - 历史P2-B标签布局：vue-tsc/Vite构建通过，Vitest10/10，定向真实浏览器3/3。
 - 历史标签布局交付时新增用例后未重跑完整22项浏览器套件，不能写全量22/22；记录见P2-B UI。
-- 前次文档收尾OpenSpec 1.14.1严格校验6/6、24份Markdown/86个本地链接通过；属于历史记录。本轮结果另见docs/design/validation.md，未重跑业务测试。
+- 前次文档收尾OpenSpec 1.14.1严格校验6/6、24份Markdown/86个本地链接通过；属于历史记录。当时结果见docs/design/validation.md；本轮B1测试见docs/development/p3-b1.md。
 - 用户功能/UI验收已通过；专项MySQL pytest及最新部署auth-integration日志未提供。
 - MySQL独立测试命令：根目录docker compose exec -T api python -m pytest -q，由用户执行。
 - 仅允许litera_test测试库；旧卷缺测试库按scripts/mysql-init.sql及P2-B说明处理，不清理业务库。
@@ -119,21 +142,21 @@ docker compose ps
 - 0004_reader_progress仅增加原表nullable view_mode/zoom_mode；旧值默认continuous/fit-width，旧PUT {}及旧null字段兼容。新状态写必须progress.version；原Document行锁串行化首次写入，MySQL使用FOR UPDATE当前读校验CAS。pypdf按需验证/缓存物理页数，不改变题录version或原PDF。
 - reader/progress先GET恢复，目标页成功后CAS记打开；1秒防抖、持续最多5秒一次，串行保存/离开flush，8秒超时。普通进度写recordOpen=false，不改变lastReadAt。失败保留本地sessionStorage草稿/提示重试并阻止静默离开；409明确选择载入服务端或基于最新版本保存本地。草稿按用户/文献隔离，刷新提示处理，退出/换账号清理。
 - reader/context.ts提供真实ReaderContext/SelectionPosition（含逐页textQuote与未旋转CropBox归一化rects）、单调contextRevision、可取消订阅及DOM事件。选区清除/切文献/离开发布真实更新或context-cleared；DPR不进入持久坐标。NoteDraft/Citation仅类型，03–06业务未实现。
-- P3-B1接入：复用context.ts选区、PdfPage的reader-object-layer/同一viewport及progress队列的错误处理经验；标注集revision/命令收据/undo必须按B1另建，不能复用progress.version。新迁移从0004_reader_progress后串行协调编号。没有annotations/资产/导出业务实现。
+- P3-B1接入：复用context.ts选区、PdfPage的reader-object-layer/同一viewport及progress队列的错误处理经验；标注集revision/命令收据/undo必须按B1另建，不能复用progress.version。该A2接入说明为历史；B1现已在0005_annotations完成标注集/命令收据/undo，资产和导出仍未实现。
 
 ## 下一阶段顺序与协作限制
 
 | 执行顺序 | 任务 | 主要交付物/用户验收点 |
 | --- | --- | --- |
 | P3-A1 | 1.x 已完成 | 开发/自动化及用户实际验收通过 |
-| P3-A2 | 2.x 本轮 | 缩放、缩略图/大纲、搜索、进度/基础上下文；刷新恢复 |
-| P3-B1 | 3.x | 模型/API/CAS/幂等、六类文本批注、撤销/列表；保存重开一致 |
+| P3-A2 | 2.x 已验收 | 缩放、缩略图/大纲、搜索、进度/基础上下文；刷新恢复 |
+| P3-B1 | 3.x 已实现，待验收 | 模型/API/CAS/幂等、六类文本批注、撤销/列表；保存重开一致 |
 | P3-B2 | 4.x | 手绘/荧光笔、三形状、三插入及资产；全部14类验收 |
 | P3-C1 | 5.x | 全类型导出矩阵/ADR、快照/权限/清理；Edge/Acrobat可见、原件保真 |
 | P3-C2 | 6.x | 多标签完整菜单、公共接入、性能/全流程回归；多文献/窄屏/资源稳定 |
 
-每阶段同步测试/契约，交付后等待验收；本次只完成A2，不自动开始B1或后续阶段。
+每阶段同步测试/契约，交付后等待验收；本次仅完成B1，不自动开始B2或后续阶段。
 保留既有未提交及已暂存改动；不reset/覆盖其他成员代码，不自动commit/push或新建分支。
 迁移编号串行协调；公共DTO/事件/API变更列出生产者和消费者，避免各成员复制不同契约。
 Docker构建/启动由用户手动执行，不改全局设置、不删数据卷、不替用户运行数据库升级。
-未经明确要求不archive、不自动开始B1或其他模块；本次完成后停止，下一会话获指令后继续。
+未经明确要求不archive、不自动开始B2或其他模块；本次完成后停止，下一会话获指令后继续。

@@ -89,4 +89,20 @@ erDiagram
 
 ## P3-A2 增量迁移（已实现）
 
-`0004_reader_progress`接`0003_library`，只ALTER原reading_progress增加nullable VARCHAR(16) view_mode/zoom_mode，旧记录/页码/倍率/版本/时间原样保留，读取时默认continuous/fit-width。不删除或重建表，无原PDF变更；后续成员从0004 head串行协调迁移编号。物理页数缓存不递增题录version；progress.version独立CAS。旧PUT {}保留已有状态并记打开；新进度写recordOpen=false不修改Document/ReadingProgress的last_read_at。SQLite从0003升级保留测试和MySQL离线DDL编译通过，真实MySQL升级/并发集成仍需单独验证，不能把离线DDL或SQLite称为MySQL集成通过。
+`0004_reader_progress`接`0003_library`，只ALTER原reading_progress增加nullable VARCHAR(16) view_mode/zoom_mode，旧记录/页码/倍率/版本/时间原样保留，读取时默认continuous/fit-width。不删除或重建表，无原PDF变更；A2当时head为0004；当前head已为0005_annotations，后续成员从当前head串行协调编号。物理页数缓存不递增题录version；progress.version独立CAS。旧PUT {}保留已有状态并记打开；新进度写recordOpen=false不修改Document/ReadingProgress的last_read_at。SQLite从0003升级保留测试和MySQL离线DDL编译通过，真实MySQL升级/并发集成仍需单独验证，不能把离线DDL或SQLite称为MySQL集成通过。
+
+## P3-B1 增量迁移（已实现）
+
+`0005_annotations`唯一接在`0004_reader_progress`之后，开发前后均检查versions目录，没有其他分支迁移。只新增annotations、document_reader_state、annotation_command_receipts及索引；原表、原文件、账号/题录/进度无重建。SQLite从0004升级对users/documents/document_files/reading_progress全行比较保留，MySQL仅离线生成DDL，真实MySQL尚未运行。
+
+annotations含id、owner_id、document_id、type、schema_version、page_number、position/geometry/style JSON、selected_text/content、color、asset_id(null)、z_index、version、created_at/updated_at/deleted_at。B1仅六类，type/schemaVersion/文本锚点不可PATCH；时间为服务器UTC，MySQL DATETIME(6)；selected_text/content使用MEDIUMTEXT以覆盖20k Unicode字符的多字节存储，SQLite仍为Text。deleted_at为受控恢复的墓碑，删除也递增对象version；恢复要求同owner/文献/ID、原快照及删除前version匹配，不从任意客户端快照新建。墓碑保留到文献永久删除，撤销历史只在当前阅读会话保留100条。索引(owner,document,page)和(document,updated)；对象id全局唯一，跨归属ID不允许关联。
+
+document_reader_state以document_id为主键、owner索引，annotation_revision从0开始，对象创建/修改/删除/恢复每次同事务+1；不改变题录version/progress.version。所有变更先锁有效Document行，再用当前读检查集合及对象CAS，解决首次写入和MySQL REPEATABLE READ快照问题；GET集合也取同一文献锁以返回一致的revision与对象。
+
+annotation_command_receipts以(document_id,command_id)复合主键、owner索引、expires_at索引，保存请求指纹及完整MutationResult，24小时有效；同ID不同请求409，重复相同请求返回原结果。过期行在该文献后续成功写入时清除，过期查询404且客户端不得盲重放。对象、修订号、收据同事务提交；故障注入验证没有部分结果。软删只屏蔽访问，恢复原ID保留对象；原cleanup_jobs在同一数据库清理事务显式删除收据/对象/状态，失败仍保持可追踪并支持幂等重试。downgrade主动拒绝删除标注，应用回退应保留数据。
+
+字段规则及限额见[API契约](api-contracts.md)和[B1开发记录](../development/p3-b1.md)。B2复用这三张表并增量扩展类型/资产校验，不提前建立reader_assets或03–06表。
+
+### B1选区JSON兼容增强（2026-10-16）
+
+annotations原position/geometry JSON容纳可选逐item字符范围textRanges和rect.baseline字体比例；schemaVersion仍1，无新迁移/列/表，原记录不批量改写。基线比例仅辅助线条显示，原归一化CropBox矩形仍为几何锚点；旧对象缺省比例0.8。API范围约束见契约末节。既有集合/对象版本、命令收据、墓碑恢复、归属和生命周期保持原规则。

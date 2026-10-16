@@ -17,6 +17,7 @@ from .database import get_db
 from .documents import document_dto, iso, owned_document, reject, storage_path
 from .models import CleanupJob, Document, DocumentFile, DocumentTag, Folder, LoginSession, ReadingProgress, Tag
 from .schemas import InputModel
+from .models import Annotation, DocumentReaderState, AnnotationCommandReceipt
 
 def now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -176,6 +177,8 @@ def run_cleanup(db, job):
             return Response(status_code=204) if job.status == "completed" else job_response(job)
         # A missing file after an interrupted cleanup counts as already removed.
         storage_path(job.storage_key).unlink(missing_ok=True)
+        for model in (AnnotationCommandReceipt, Annotation, DocumentReaderState):
+            db.execute(delete(model).where(model.document_id == job.document_id, model.owner_id == job.owner_id))
         db.execute(delete(DocumentTag).where(DocumentTag.document_id == job.document_id, DocumentTag.owner_id == job.owner_id))
         db.execute(delete(ReadingProgress).where(ReadingProgress.document_id == job.document_id, ReadingProgress.owner_id == job.owner_id))
         db.execute(delete(DocumentFile).where(DocumentFile.document_id == job.document_id, DocumentFile.owner_id == job.owner_id))

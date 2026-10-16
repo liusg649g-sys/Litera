@@ -4,8 +4,10 @@ import { TextLayer } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import type { SearchMatch } from '../reader/search'
-const props = defineProps<{ pdf: PDFDocumentProxy; pageNumber: number; root: HTMLElement; scale: number; size: { width: number; height: number }; matches: SearchMatch[]; selected: string }>()
-const emit = defineEmits<{ ready: [number]; failure: [unknown] }>()
+import PdfAnnotations from './PdfAnnotations.vue'
+import type { AnnotationDTO, AnnotationType } from '../reader/annotations'
+const props = defineProps<{ pdf: PDFDocumentProxy; pageNumber: number; root: HTMLElement; scale: number; size: { width: number; height: number }; matches: SearchMatch[]; selected: string; annotations?: AnnotationDTO[]; selectedAnnotation?: string; annotationTool?: AnnotationType | 'erase' | ''; annotationEnabled?: boolean; annotationEditor?: AnnotationDTO | null; editorLocked?: boolean; editorBusy?: boolean; editingActive?: boolean }>()
+const emit = defineEmits<{ ready: [number]; failure: [unknown]; annotationSelect: [AnnotationDTO]; annotationPlace: [number, number, number]; annotationMove: [string, AnnotationDTO['geometry']]; annotationEdit: [AnnotationDTO]; annotationDraft: [AnnotationDTO]; annotationSave: []; annotationCancel: [] }>()
 const host = ref<HTMLElement>(), canvas = ref<HTMLCanvasElement>(), text = ref<HTMLElement>()
 const dimensions = computed(() => ({ width: props.size.width * props.scale, height: props.size.height * props.scale }))
 const highlights = ref<{ id: string; x: number; y: number; width: number; height: number }[]>([])
@@ -16,6 +18,24 @@ let renderTask: RenderTask | undefined, layer: TextLayer | undefined
 let generation = 0, disposed = false, wanted = false, running = false
 let staging: HTMLCanvasElement | undefined
 let zoomTimer: ReturnType<typeof setTimeout> | undefined
+let pointerStart = { x: 0, y: 0 }
+function startTextSelection(event: PointerEvent) {
+  // A new drag inside an old selection otherwise starts native HTML text DnD,
+  // leaving the previous Range intact. Keep Shift extension and copy untouched.
+  if (event.button === 0 && !event.shiftKey && !window.getSelection()?.isCollapsed) window.getSelection()?.removeAllRanges()
+}
+function selectTextMark(event: MouseEvent) {
+  // Let the browser finish native character selection first. A click-through
+  // hit test selects an annotation only when the gesture was not a text drag.
+  if (Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>3 || !window.getSelection()?.isCollapsed) return
+  if (props.annotationTool && props.annotationTool !== 'erase') return
+  for (const polygon of [...host.value!.querySelectorAll<SVGPolygonElement>('.annotation-text-mark polygon')].reverse()) {
+    const r = polygon.getBoundingClientRect()
+    if (event.clientX<r.left || event.clientX>r.right || event.clientY<r.top || event.clientY>r.bottom) continue
+    const item = props.annotations?.find(a => a.id === polygon.parentElement!.getAttribute('data-annotation'))
+    if (item) { emit('annotationSelect',item); return }
+  }
+}
 function markMatches() {
   if (!layer || status.value !== '已渲染' || !host.value) { highlights.value = []; return }
   const bounds = host.value.getBoundingClientRect(), marks: typeof highlights.value = []
@@ -64,9 +84,13 @@ async function render() {
     layer = new TextLayer({ textContentSource: page.streamTextContent(), container: stagedText, viewport })
     await layer.render()
     if (disposed || current !== generation) { stagedText.remove(); return }
+    layer.textDivs.forEach((span, item) => { span.dataset.textItem = String(item) })
     target.width = staging.width; target.height = staging.height
     target.getContext('2d')!.drawImage(staging, 0, 0)
     container.replaceChildren(...stagedText.childNodes); container.style.cssText = stagedText.style.cssText; container.style.visibility = ''
+    // TextLayer rotation is an attribute consumed by PDF.js CSS, not an inline style.
+    // Preserve it when committing the staged layer, including intrinsic PDF Rotate.
+    container.setAttribute('data-main-rotation', stagedText.getAttribute('data-main-rotation') || '0')
     stagedText.remove()
     status.value = '已渲染'; await nextTick(); markMatches(); emit('ready', props.pageNumber)
   } catch (error) {
@@ -99,11 +123,11 @@ onBeforeUnmount(() => { disposed = true; wanted = false; clearTimeout(zoomTimer)
 </script>
 <template>
   <section ref="host" class="pdf-page" :data-page="pageNumber" :data-status="status"
-    :aria-label="`第 ${pageNumber} 页`" :style="{ width: dimensions.width + 'px', height: dimensions.height + 'px', '--scale-factor': scale, '--user-unit': userUnit, '--total-scale-factor': scale * userUnit }">
+    :aria-label="`第 ${pageNumber} 页`" :style="{ width: dimensions.width + 'px', height: dimensions.height + 'px', '--scale-factor': scale, '--user-unit': userUnit, '--total-scale-factor': scale * userUnit }" @pointerdown="pointerStart = { x: $event.clientX, y: $event.clientY }" @click="selectTextMark">
     <canvas ref="canvas" width="0" height="0" :aria-label="`PDF 第 ${pageNumber} 页画布`" />
-    <div ref="text" class="textLayer" :style="{ visibility: status === '已渲染' ? 'visible' : 'hidden' }" />
+    <div ref="text" class="textLayer" :style="{ visibility: status === '已渲染' ? 'visible' : 'hidden' }" @pointerdown="startTextSelection" @dragstart.prevent />
     <div class="pdf-search-layer" aria-hidden="true"><span v-for="(mark, i) in highlights" :key="i" :data-match="mark.id" :class="{ current: mark.id === selected }" :style="{ left: mark.x + 'px', top: mark.y + 'px', width: mark.width + 'px', height: mark.height + 'px' }" /></div>
-    <div class="reader-object-layer" aria-hidden="true" />
+    <PdfAnnotations :pdf="pdf" :page-number="pageNumber" :scale="scale" :items="annotations || []" :editor="annotationEditor" :editor-locked="editorLocked" :editor-busy="editorBusy" :editing-active="editingActive" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationEnabled || false" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" @place="(p,x,y) => emit('annotationPlace',p,x,y)" @move="(id,g) => emit('annotationMove',id,g)" />
     <span v-if="status === '正在渲染'" class="pdf-page-loading" role="status" :aria-label="`正在加载第 ${pageNumber} 页`" />
   </section>
 </template>
