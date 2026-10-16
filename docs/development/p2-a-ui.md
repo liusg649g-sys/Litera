@@ -32,7 +32,8 @@
 复现（CMD，需已有backend/.venv依赖、前端依赖和Chromium）：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\frontend
+rem 在项目根目录打开新的 CMD 终端后执行
+cd frontend
 npm run build
 npm test
 npm run test:library

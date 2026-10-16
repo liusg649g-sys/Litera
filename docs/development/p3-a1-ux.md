@@ -35,7 +35,7 @@
 已有服务可只重建前端，原API/数据库不动：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 docker compose up -d --build --no-deps --wait nginx
 ```
 

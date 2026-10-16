@@ -2,7 +2,7 @@
 
 ## Context
 
-2026-10-15 规约重审，负责人Jensen Zhang。01及02 P3-A1/A2已通过用户实际功能/UI验收；本轮获授权仅实施P3-B1（3.1–3.6），B2/C不启动。以下A1/A2实施段为历史；B1实际实现见末节及[开发记录](../../../docs/development/p3-b1.md)。范围见[proposal](proposal.md)，行为见[pdf-reading](specs/pdf-reading/spec.md)及[reader-workspace](specs/reader-workspace/spec.md)，阶段见[tasks](tasks.md)。
+2026-10-16交付状态更新，负责人Jensen Zhang。01及02 P3-A1/A2/B1均已通过用户实际功能/UI验收，P3-B1正式交付，当前18/36。下一阶段为P3-B2（4.1–4.6），尚未启动，C1/C2及03–06同样未启动。本次只同步文档，保留各阶段历史测试，不修改业务代码或归档。最终B1交互、测试批次和MySQL证据边界见[开发记录](../../../docs/development/p3-b1.md)。范围见[proposal](proposal.md)，行为见[pdf-reading](specs/pdf-reading/spec.md)及[reader-workspace](specs/reader-workspace/spec.md)，阶段见[tasks](tasks.md)。
 
 已逐张检查[15–25截图索引](../../../docs/references/xiaolvjing/reader-reference-index.md)：15整体、16标签菜单、17左导航、18视图、19缩放、23工具、24搜索、25列表。20–22仅说明未来扩展关系。用户要求优先于截图：不照搬视图自由组合、缩略图滑块、核心工具下拉、商业功能或品牌素材。
 
@@ -107,7 +107,7 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 
 所有对象可选择、编辑属性、删除；橡皮擦为命中后删除整个Litera对象，不擦原PDF或局部分割笔迹。删除键只在对象选中且阅读器聚焦时生效。右侧列表覆盖本篇全部Litera对象及注释/插入，展示页/类型/摘要；按页位置或创建时间排序，按类型/颜色筛选，点击定位；编辑/删除同步列表与未保存状态。搜索/列表共用右区，分别保留本篇状态。
 
-2026-10-16用户授权的P3-B1局部编辑优化覆盖历史中央编辑窗行为：注释在原列表卡片内编辑；页面图标点击仅定位卡片。自由文本单击显示轻量边框/八方向控制点、双击及新建在原页面使用同viewport变换的textarea输入，附近复用颜色/透明度/字号控件；新建和页面双击不自动滚动离开点击位置，列表编辑可跳转对应页。尺寸与字号独立，保留原geometry.box.rect和style.fontSize，无接口/数据库变化。卡片/页面统一✓保存与×取消；未提交编辑阻止切文献/关闭面板/替换编辑对象，保存失败保留已进入原队列的草稿，取消已提交操作先核对结果再用补偿撤销恢复。窄屏批注列表沿用原侧面板但为非模态，无背景遮罩；搜索面板维持原行为。高亮等四类文字标记仍沿用原属性编辑器。
+2026-10-16已验收的P3-B1局部编辑优化覆盖历史中央编辑窗行为：注释在原列表卡片内编辑；页面图标点击仅定位卡片。自由文本仅在批注组单击显示轻量边框/八方向控制点，阅读组单击只联动列表、双击切批注组；双击及新建在原页面使用同viewport变换的textarea输入，附近复用颜色/透明度/字号控件；新建和页面双击不自动滚动离开点击位置，列表编辑可跳转对应页。尺寸与字号独立，保留原geometry.box.rect和style.fontSize，无接口/数据库变化。卡片/页面统一✓保存与×取消；未提交编辑阻止切文献/关闭面板/替换编辑对象，保存失败保留已进入原队列的草稿，取消已提交操作先核对结果再用补偿撤销恢复。窄屏批注列表沿用原侧面板但为非模态，无背景遮罩；搜索面板维持原行为。高亮等四类文字标记仍沿用原属性编辑器。
 
 ### 7. 持久化、撤销与增量迁移
 
@@ -161,7 +161,7 @@ ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|
 
 ## Migration Plan
 
-按A1→A2→B1→B2→C1→C2实施，详见tasks；每阶段测试/文档随交付，完成后停止验收。P3-A1已通过用户实际验收，本轮只实施P3-A2的2.1–2.6，B1及之后24项保持未开始；A2增量迁移仅在隔离测试库验证，未执行实际业务库迁移、Compose、提交或归档，不修改03–06业务及历史测试记录。
+按A1→A2→B1→B2→C1→C2实施，详见tasks。A1/A2/B1已开发、自动化验证并通过用户实际功能/UI验收，当前18/36；B2（4.1–4.6）及之后18项尚未启动。迁移链至0005_annotations，增量保留原用户/题录/PDF/阅读进度；开发自动化迁移验证使用隔离SQLite，MySQL仅离线DDL，没有真实MySQL专项集成通过证据。用户Docker功能/UI验收已完成；本次文档收尾不运行Compose/业务迁移、修改03–06状态、提交或归档，停止等待新会话授权。
 
 ## Open Questions
 
@@ -169,7 +169,7 @@ ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|
 
 工程决策留到对应阶段：A1锁PDF.js/浏览器样本；B2实测对象资产限额；C1凭全类型样本定导出库/协议/字体。用户可补充目标电脑、最大页数/并发、第三方阅读器版本；当前数字为待测工程预算，不是已达成性能。50%–500%、三种模式及无03–06 UI已确定。
 
-## P3-A2实施说明（2026-10-15）
+## P3-A2实施说明（历史，2026-10-15）
 
 实现与测试范围见[开发记录](../../../docs/development/p3-a2.md)。所有A1布局/三视图/标签排序沿用，加入独立zoom/search/progress/context小模块；共享PdfPage接受逻辑scale/真实页尺寸，Canvas DPR预算与层坐标分开。显式跳页优先于异步fit锚点恢复，路由切换以loadedDocumentId+generation拒绝旧文献进度/选区/搜索。
 
@@ -177,23 +177,23 @@ ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|
 
 0004迁移只加view_mode/zoom_mode可空列；服务端用文献行锁及progress FOR UPDATE当前读避免MySQL重复读快照导致CAS失效。页数来自pypdf，缓存不改题录version。旧PUT {}及旧null pageNumber/zoom兼容，新状态写必须独立version。前端1秒防抖/5秒最大等待、串行CAS、8秒超时、离开flush；失败/冲突保留用户与文献隔离的sessionStorage设置草稿，用户明确处理后再离开；不存PDF/文本。ctx真实选区包含每页textQuote与归一化矩形，订阅/清理接口已落地，完整引用导航仍C2。
 
-本轮不实现任何持久批注/绘制/插入/导出或03–06业务；MySQL仅离线DDL编译，真实集成验收须用户单独补证。完成后等待本轮手动体验，不自动进入P3-B1。
+本节记录A2当时的边界，不含持久批注；其后B1已完成并验收，绘制/插入/导出及03–06仍未实现。MySQL仅离线DDL，真实专项集成仍需独立证据。
 
 ## P3-A2 UI补充（当前尺寸，2026-10-15）
 
 用户已在Docker实际体验核心功能并确认整体符合预期。本轮只做前端UI补充：阅读器品牌/标签/主栏/二级栏48/40/40/40px，阅读组隐藏二级栏，移除Footer；品牌20px和基础UI12px使用全局Token，标题层级保留，库品牌栏仍52px。PDF四周padding与页间gap统一12px，由同一常量驱动CSS/fit/导航偏移；fit扣两侧24px、双页加12px间距/取最高页，读取实际容器client尺寸，不重复扣导航高度。PDF.js全局.spread的3.5px双侧margin在本地集合覆盖为0，避免7px额外横向溢出，真正超宽仍滚动并使用白灰细滚动条。缩放/大纲采用同包SVG Chevron；鼠标操作不显示阅读区整圈焦点框，Tab进入保留局部focus-visible提示，输入框方向键不接管。
 
-本节覆盖前文历史尺寸/间距，不变更架构、后端、进度队列/接口及B/C边界。测试及手动验收见[UI补充记录](../../../docs/development/p3-a2-ux.md)。仍12/36，不新增阶段或任务编号。
+本节覆盖前文历史尺寸/间距，不变更架构、后端、进度队列/接口及B/C边界。测试及手动验收见[UI补充记录](../../../docs/development/p3-a2-ux.md)。当时12/36；后续B1已验收，当前18/36，未新增阶段或任务编号。
 
 ## P3-B1实际实现（2026-10-15）
 
 六类文本对象按既定模型实现，0005_annotations增量接0004；annotations保存受控恢复墓碑，document_reader_state及annotation_command_receipts维护独立集合CAS/幂等。Document行锁串行首次写入并与软删/清理协调，当前读校验对象/集合版本；同事务提交，失败不部分写。软删保留、恢复原ID，永久清理新增三表纳入原失败/重试作业。无资产表、无03–06表。
 
-PdfPage在原reader-object-layer挂PdfAnnotations独立SVG，同viewport正逆变换；四类标记复用context.ts的真实多行/多页rects，注释支持文本或页点，自由文本用box+纯文本foreignObject。页点可拖动、文本框可拖动/右下角改框，取消指针不提交；颜色/透明度/字号/线宽从紧凑编辑窗保存。编辑窗使用原生dialog top layer，兼容窄屏ReaderPanel自身的原生modal，不将不可交互弹窗放到modal外。B2工具继续开发中。
+PdfPage在原reader-object-layer挂PdfAnnotations独立SVG，同viewport正逆变换；四类标记复用context.ts真实多行/多页rects，注释支持文本或页点，自由文本使用box。最终注释在右侧卡片内编辑；自由文本阅读组单击只联动列表，双击切批注组原位输入，批注组可实时拖动/八方向改框，字号独立。文本标记属性保留紧凑dialog；注释/自由文本不使用中央弹窗，统一✓保存/×取消。颜色、透明度、字号及几何沿用原模型；顶部拖动条35%不透明度、左侧约3屏幕px留白，单/双击判定避免侧栏重排丢失第二次命中。B2工具保持不可用、尚未启动。
 
 reader/annotations.ts独立串行队列：1秒自动保存、8秒超时、准备请求先落本地草稿；超时/刷新先查收据，原命令原ID重试，后续依赖失败即暂停。100条语义撤销历史，已存undo/redo提交真实补偿；在途先等确认。冲突不自动重放覆盖服务端，提供草稿导出/显式载入服务端并保留可导出备份，重新加载清无效历史。路由/活动标签关闭flush失败阻止静默离开，可显式保留草稿后返回库，编辑中阻止离开，浏览器关闭提示；输入自身快捷键保留。独立于progress保存队列。
 
-AnnotationList复用右区，位置/时间排序、类型/颜色筛选、摘要/时间、列表→页点及对象→列表选中，搜索切换保持位置；仅管理Litera对象、不依赖04。测试使用真实上传、PDF.js、隔离SQLite API；旋转CropBox跨倍率几何一致，DOM字体行框取整的误差按PDF point记录。MySQL仅增量DDL离线编译，实际MySQL集成/用户部署另行验收，B1交付后停止。
+AnnotationList复用右区，位置/时间排序、类型/颜色筛选、摘要/时间、列表→页点及对象→列表选中，搜索切换保持位置；仅管理Litera对象、不依赖04。测试使用真实上传、PDF.js、隔离SQLite API；旋转CropBox跨倍率几何一致，DOM字体行框取整的误差按PDF point记录。MySQL仅增量DDL离线编译，用户Docker实际功能/UI已验收，真实MySQL专项集成仍未运行/未提供证据；B1正式交付后停止，等待新会话。
 
 按照用户最新指示，平台不提供手动页面旋转或视图旋转状态，历史“视图旋转”目标不属于交付范围。PDF.js继续读取源文件固有Rotate/CropBox以正确显示原文。完整帧提交TextLayer时同时保留PDF.js的data-main-rotation属性，页容器提供--scale-round-x/y尺寸变量，确保源文件自带朝向下选区与Canvas一致，不改变原PDF。
 
@@ -201,6 +201,6 @@ AnnotationList复用右区，位置/时间排序、类型/颜色筛选、摘要/
 
 本次仅完善B1，仍18/36。创建直接读取手势结束/点击工具时的原生Range，ReaderContext仍是对外快照；裁切元素/Text边界，记录每页UTF-16 textRanges(item/start/end)。禁止TextLayer原生HTML文字拖放，新手势可重选旧选区，保留复制及Shift扩选。逐页将Rect逆变换到未旋转CropBox坐标，以真实PDF宽高判断同行、最多0.55行高间隙，不跨行/栏；已有分段对象仅显示时合并，不重写数据库。Rect可选baseline是字体升部占完整行框比例（0–1），新选区按浏览器字体metrics记录、合并时重算；旧对象缺省0.8。下划线/删除线按基线定位并限制线宽/波幅，SVG二次贝塞尔绘平滑波浪。
 
-文本SVG对象鼠标穿透，在PdfPage以结束后的单击命中测试选择，拖选不触发编辑；阅读组不画选框，创建后清选中，空白/Esc/阅读退出编辑。页点气泡的尾尖固定原坐标，屏幕尺寸恒定并在靠边时翻转，使用原anchor模型；自由文本/气泡可直接拖动，局部preview随pointermove，pointerup一条edit，Esc/pointercancel/换文献/换倍率/卸载清预览。失败位置由原保存队列保留草稿，可重试/补偿撤销。
+文本SVG对象鼠标穿透，在PdfPage以结束后的单击命中测试选择，拖选不触发编辑；阅读组不画选框，创建后清选中，空白/Esc/阅读退出编辑。页点气泡的尾尖固定原坐标，屏幕尺寸恒定并在靠边时翻转，使用原anchor模型；批注组自由文本/气泡可直接拖动，局部preview随pointermove，pointerup一条edit，Esc/pointercancel/换文献/换倍率/卸载清预览。失败位置由原保存队列保留草稿，可重试/补偿撤销。
 
 字体比例和字符范围仅为原JSON中可选字段，旧JSON缺省不输出null，旧墓碑可恢复；不改schemaVersion、不新增迁移。API/认证/CAS/收据/进度机制沿用。成功反馈只在真实写入确认后、PDF区域顶部居中显示1秒绿色对号，单实例且不接收鼠标；失败/冲突保留原明确提示。工具语义SVG为项目自绘，无新依赖。详细证据及Windows手动验收见开发记录末节。

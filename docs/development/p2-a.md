@@ -34,11 +34,12 @@ pytest仍有Starlette/httpx弃用警告；不影响通过。未运行MySQL/容�
 复现命令（Windows CMD）：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\backend
+rem 在项目根目录打开新的 CMD 终端后执行
+cd backend
 .venv\Scripts\python -m pip install -r requirements.txt
 set TEST_DATABASE_URL=
 .venv\Scripts\python -m pytest -q
-cd /d D:\PKU\Projects\Litera\frontend
+cd ..\frontend
 npm ci
 npm run build
 npm test
@@ -57,7 +58,7 @@ npm run test:e2e -- --project=auth-ui
 2. 在CMD执行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 docker compose up -d --build --wait
 ```
 
@@ -71,7 +72,7 @@ docker compose up -d --build --wait
 10. 独立测试数据库验收：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 docker compose exec -T api python -m pytest -q
 cd frontend
 npm run test:e2e -- --project=auth-integration
@@ -83,6 +84,6 @@ pytest强制MySQL测试库名为litera_test，拒绝清理非测试库；若已�
 
 文件系统和数据库无统一事务，正常异常有补偿，但进程硬退出仍可能留下未引用临时/发布文件，P2-A不具备崩溃恢复清理作业。提交确认丢失返回失败而保留已提交PDF，刷新列表或重新上传可确认是否已成功。PDF卷必须持久化，不能将私有目录映射为Nginx静态路径。生产HTTPS、跨进程限流与其他模块保持既有阶段边界。
 
-本机非容器运行API时，PDF_STORAGE_ROOT须设置为项目内可写目录，例如D:\PKU\Projects\Litera\storage\pdfs；Compose使用容器路径/data/pdfs。导航宽度本页内存保留，刷新回默认，未新增浏览器凭证或PDF文本存储。
+本机非容器运行API时，PDF_STORAGE_ROOT须设置为项目内可写目录，例如项目根目录中的 storage/pdfs（配置时填写本机实际路径）；Compose使用容器路径/data/pdfs。导航宽度本页内存保留，刷新回默认，未新增浏览器凭证或PDF文本存储。
 
 P2-A用户验收通过后，等待单独P2-B指令；不自动进入P2-B或02–06，不归档整个01，不commit/push。

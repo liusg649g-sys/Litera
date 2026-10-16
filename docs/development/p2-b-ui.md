@@ -27,11 +27,12 @@
 复现（已安装前后端依赖和Chromium，Windows CMD）：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\frontend
+rem 在项目根目录打开新的 CMD 终端后执行
+cd frontend
 npm run build
 npm test
 npm run test:library
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 openspec validate --all --strict
 ```
 

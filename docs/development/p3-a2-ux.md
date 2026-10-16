@@ -35,7 +35,7 @@ fit继续读取实际阅读容器clientWidth/clientHeight，由既有ResizeObser
 仅前端变化，已有环境可只重建nginx，本次未代执行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 docker compose up -d --build --no-deps --wait nginx
 ```
 

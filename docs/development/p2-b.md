@@ -43,16 +43,17 @@ P2-B浏览器用例覆盖创建/改名/删除分类、文件夹内上传、分�
 ## Windows CMD 自动化复现
 
 ```cmd
-cd /d D:\PKU\Projects\Litera\backend
+rem 在项目根目录打开新的 CMD 终端后执行
+cd backend
 set TEST_DATABASE_URL=
 .venv\Scripts\python -m pytest -q
-cd /d D:\PKU\Projects\Litera\frontend
+cd ..\frontend
 npm run build
 npm test
 npm run test:library
 set LITERA_UI_PORT=5176
 npm run test:e2e -- --project=auth-ui
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 openspec validate --all --strict
 ```
 
@@ -63,7 +64,7 @@ openspec validate --all --strict
 已有.env与命名卷保留，无需重新初始化。升级前联合备份MySQL和PDF卷，不执行down -v，不删除或重建业务表。以下命令只供用户手动执行，代理没有运行：
 
 ```cmd
-cd /d D:\PKU\Projects\Litera
+rem 在项目根目录执行
 docker compose up -d --build --wait
 docker compose exec -T api python -m alembic current
 docker compose exec -T api python -m pytest -q
