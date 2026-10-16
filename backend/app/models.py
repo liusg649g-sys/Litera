@@ -152,3 +152,23 @@ class AnnotationCommandReceipt(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     result: Mapped[dict] = mapped_column(JSON, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+
+
+class ReaderAsset(Base):
+    __tablename__ = "reader_assets"
+    __table_args__ = (Index("ix_reader_assets_document_status", "owner_id", "document_id", "status"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+    # null while referenced; otherwise a recoverable lease for drafts/undo.
+    expires_at: Mapped[datetime | None] = mapped_column(library_time)

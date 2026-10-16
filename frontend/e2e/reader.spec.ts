@@ -55,7 +55,7 @@ test('real upload → local Worker/Canvas/text selection, views, navigation and 
   await page.screenshot({path:'test-results/reader/desktop.png'})
 })
 
-test('B2 tool groups remain unavailable and responsive panels preserve reading',async({page})=>{
+test('Tool groups are enabled and responsive panels preserve reading',async({page})=>{
   const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('layout',1))).json()
   await page.goto(`/reader/${doc.id}`);await rendered(page,1)
   const writes:string[]=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(r.url())})
@@ -67,10 +67,11 @@ test('B2 tool groups remain unavailable and responsive panels preserve reading',
   }
   for(const [group,tool] of [['形状','矩形'],['插入','签名'],['批注','手绘']]){
     await page.getByRole('button',{name:group,exact:true}).click()
-    const button=page.getByRole('button',{name:`${tool}（功能开发中）`,exact:true})
-    await expect(button).toHaveAttribute('aria-disabled','true');await button.click({force:true})
-    await expect(page.getByRole('status')).toContainText('不会创建或保存批注数据')
+    const button=page.getByRole('button',{name:tool,exact:true})
+    await expect(button).toHaveAttribute('aria-disabled','false');await button.click()
+    if(tool==='签名')await page.getByLabel('创建视觉签名').getByRole('button',{name:'× 取消',exact:true}).click()
   }
+  await page.getByRole('button',{name:'阅读',exact:true}).click()
   for(const size of [{width:1920,height:1080},{width:1366,height:768},{width:390,height:844}]){
     await page.setViewportSize(size)
     await page.getByRole('button',{name:'展开文献导航',exact:true}).click()

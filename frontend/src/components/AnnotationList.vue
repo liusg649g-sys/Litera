@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { bounds } from '../reader/objectGeometry'
 import { annotationLabels } from '../reader/annotations'
 import type { AnnotationDTO } from '../reader/annotations'
 import { annotationListFilters } from '../reader/state'
@@ -10,7 +11,7 @@ const entriesWithDraft = computed(() => props.editor && !props.items.some(a=>a.i
 const filters = computed(() => annotationListFilters[props.documentId] ??= { type: '', color: '', sort: 'position' }), entries = ref<HTMLElement>()
 const colors = computed(() => [...new Set(props.items.map(a => a.color))].sort())
 const visible = computed(() => entriesWithDraft.value.filter(a => a.id===props.editor?.id || ((!filters.value.type || a.type===filters.value.type) && (!filters.value.color || a.color===filters.value.color))).sort((a,b) => filters.value.sort==='time' ? b.createdAt.localeCompare(a.createdAt) : a.pageNumber-b.pageNumber || position(a)-position(b) || a.createdAt.localeCompare(b.createdAt)))
-function position(a: AnnotationDTO) { const g=a.geometry; return g.kind==='anchor' ? g.y : g.kind==='box' ? g.rect.y : g.positions[0]!.rects[0]!.y }
+function position(a: AnnotationDTO) { const g=a.geometry; return bounds(g).y }
 watch(() => props.editor?.id, async id => {
   if (!id) return
   await nextTick()
@@ -34,7 +35,7 @@ watch(() => props.selected, async id => {
     <div ref="entries" class="annotation-list-items" tabindex="0" role="region" aria-label="批注条目">
     <p v-if="!visible.length" class="reader-panel-placeholder">{{ items.length ? '没有符合筛选条件的批注' : '此文献暂无批注，选择文本或使用注释工具开始。' }}</p>
     <article v-for="item in visible" :key="item.id" :data-list-annotation="item.id" :class="{ selected: selected===item.id }" class="annotation-card">
-      <button class="annotation-card-main" @click="emit('select',item)"><span class="annotation-dot" :style="{ background: item.color }" /><strong>{{ annotationLabels[item.type] }} · 第 {{ item.pageNumber }} 页</strong><span v-if="editor?.id!==item.id" class="annotation-summary">{{ item.content || item.selectedText }}</span><time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time></button>
+      <button class="annotation-card-main" @click="emit('select',item)"><span class="annotation-dot" :style="{ background: item.color }" /><strong>{{ annotationLabels[item.type] }} · 第 {{ item.pageNumber }} 页</strong><span v-if="editor?.id!==item.id" class="annotation-summary">{{ item.content || item.selectedText || (item.type==='ink' ? '自由手绘笔迹' : annotationLabels[item.type]+'对象') }}</span><time :datetime="item.createdAt">{{ new Date(item.createdAt).toLocaleString() }}</time></button>
       <form v-if="editor?.id===item.id" class="annotation-inline-form" @submit.prevent="emit('save')" @keydown.esc.stop.prevent="emit('cancel')">
         <textarea :value="editor.content || ''" aria-label="批注正文" rows="5" maxlength="20000" required :disabled="editorLocked" @input="emit('draft',{...editor,content:($event.target as HTMLTextAreaElement).value})" />
         <AnnotationProperties :item="editor" :disabled="editorLocked" @change="emit('draft',$event)" />

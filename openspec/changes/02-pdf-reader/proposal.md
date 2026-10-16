@@ -28,4 +28,4 @@ Change 01 已通过用户功能/UI验收，但阅读仍是浏览器原文件预�
 
 负责人Jensen Zhang。未来影响reader路由、PDF.js/匹配Worker、原progress兼容扩展、annotations/资产/导出增量存储及清理；复用Cookie、Origin/CSRF、稳定documentId和私有content/Range。阶段门槛见design.md/tasks.md。
 
-P3-A1/A2/B1均已完成开发与验证并通过用户实际功能/UI验收；2026-10-16用户确认P3-B1（3.1–3.6）正式交付。当前18/36，六类文本批注/命令保存/撤销/列表的最终功能、历史测试及遗留边界见[B1记录](../../../docs/development/p3-b1.md)。下一阶段为P3-B2（4.1–4.6），尚未启动；B2/C及03–06均未实现。真实MySQL专项集成未运行，不以用户Docker功能/UI验收替代专项测试。本次只同步文档，不改业务代码、不运行Compose/业务迁移、不提交/推送/归档，停止等待新会话授权。
+P3-A1/A2/B1已通过用户实际功能/UI验收。本轮获授权实施P3-B2：七类绘制/插入、增量reader_assets、安全图片校验及统一命令/资产生命周期已开发；B2用户实际功能/UI验收待进行，任务4.6保留该门槛。C1/C2与03–06未实施，不自动归档。实现、真实自动化批次与MySQL边界见 [B2记录](../../../docs/development/p3-b2.md)，历史B1见 [B1记录](../../../docs/development/p3-b1.md)。未运行Docker/业务库迁移或Git提交推送。

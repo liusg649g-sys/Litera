@@ -165,3 +165,30 @@ aside.reader-panel-fixed, dialog.reader-panel-fixed[open] { display:flex }
 .free-text-overflow-hint { color:var(--litera-muted); font-size:11px; margin:4px 0 }
 .free-text-display { width:100%; height:100%; position:relative; pointer-events:none }
 .free-text-overflow { position:absolute; bottom:0; right:0; padding:0 3px; background:white; color:var(--litera-primary); font:bold 12px Arial }
+
+/* B2 objects preserve native text selection in reading mode. */
+.drawing-overlay { pointer-events:none; z-index:3 }
+.drawing-overlay.creating { pointer-events:all; cursor:crosshair; touch-action:none }
+.drawing-overlay.active .drawing-object { pointer-events:visiblePainted; cursor:move; touch-action:none }
+.drawing-overlay .drawing-ghost { pointer-events:none }
+.drawing-overlay.active .drawing-selection { pointer-events:all }
+.drawing-controls { z-index:6 }
+.drawing-controls > label { display:flex; gap:6px; align-items:center; margin-top:6px }
+.drawing-controls input[type=text],.drawing-controls input:not([type]) { min-width:0; width:190px }
+.reader-secondary input[type=number] { width:52px; font:inherit; border:1px solid var(--litera-border); border-radius:4px }
+.signature-pad { position:absolute; top:178px; right:18px; width:min(400px,calc(100vw - 36px)); box-sizing:border-box; padding:12px; z-index:9; background:white; border:1px solid var(--litera-border); border-radius:6px; box-shadow:0 3px 16px #0002 }
+.signature-pad p { color:var(--litera-muted) }
+.signature-pad canvas { width:100%; height:auto; border:1px solid var(--litera-border); background:#fafafa; touch-action:none }
+.signature-pad > div { display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap }
+
+.drawing-overlay .drawing-object { pointer-events:none }
+.drawing-overlay.active .drawing-object { pointer-events:visiblePainted }
+.drawing-overlay.creating .drawing-object { pointer-events:none }
+.drawing-overlay.erasing .drawing-object { pointer-events:visiblePainted; cursor:crosshair; touch-action:none }
+
+.asset-manager header { display:flex; justify-content:space-between; align-items:center }
+.asset-entries { max-height:300px; overflow:auto }
+.asset-entries article { display:flex; flex-wrap:wrap; gap:6px; padding:8px 0; border-bottom:1px solid var(--litera-border) }
+.asset-entries small { width:100%; color:var(--litera-muted) }
+
+.reader-workspace svg.drawing-overlay { width:100%; height:100%; overflow:visible }

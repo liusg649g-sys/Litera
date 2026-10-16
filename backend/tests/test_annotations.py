@@ -229,7 +229,7 @@ def test_upgrade_0004_keeps_existing_business_rows_and_pdf(tmp_path,monkeypatch)
     ac.upgrade(config,'head')
     with engine.connect() as conn:
         for table,rows in before.items():assert conn.execute(text('SELECT * FROM '+table)).mappings().all()==rows
-        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0005_annotations'
+        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0006_reader_assets'
     assert original.read_bytes()==b'%PDF-existing-original'
     engine.dispose()
 
@@ -256,3 +256,19 @@ def test_expired_receipt_and_cleanup_db_failure_are_traceable(logged,pdf):
     with SessionLocal() as db:assert db.get(Annotation,item['id']) is not None
     assert logged.post('/api/v1/cleanup-jobs/'+job+'/retry').status_code==204
     with SessionLocal() as db:assert db.get(Annotation,item['id']) is None
+
+
+def test_b2_keeps_b1_zero_rotation_receipt_fingerprint(logged,pdf):
+    import hashlib,json
+    from app.annotations import Create
+    doc=upload(logged,pdf).json();path='/api/v1/documents/'+doc['id'];body=command(annotation=data('freeText'))
+    response=logged.post(path+'/annotations',json=body);assert response.status_code==201
+    legacy_payload=Create.model_validate(body).model_dump(exclude_unset=True)
+    legacy_payload['annotation']['geometry']['rotation']=0
+    fingerprint=hashlib.sha256(json.dumps(['create',None,legacy_payload],sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    with SessionLocal() as db:
+        row=db.get(AnnotationCommandReceipt,(doc['id'],body['commandId']));row.fingerprint=fingerprint;db.commit()
+    assert logged.post(path+'/annotations',json=body).json()==response.json()
+    for value in (0,0.0):
+        body['annotation']['geometry']['rotation']=value
+        assert type(Create.model_validate(body).model_dump()['annotation']['geometry']['rotation']) is int

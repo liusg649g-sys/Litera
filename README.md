@@ -6,21 +6,13 @@
 
 ## 当前进度
 
-Change 01及Change 02 P3-A1/A2/B1已通过用户实际功能及UI验收。**P3-B1于2026-10-16正式交付，Change 02当前18/36；下一阶段P3-B2（4.1–4.6）尚未启动。** 六类文本批注、CAS/幂等保存、补偿撤销重做、列表及文献生命周期已交付；注释在列表卡片内编辑，自由文本在PDF原位编辑/改框。最终功能、历次测试及遗留边界见[B1记录](docs/development/p3-b1.md)和[HANDOFF](HANDOFF.md)。03–06、手绘/形状/插入及带批注导出尚未实现，Change 02未归档。
+Change 01及Change 02 P3-A1/A2/B1已通过用户实际功能/UI验收。P3-B2本轮实现手绘、矩形/圆形/椭圆、视觉签名、当前页文字水印、PNG/JPEG插入及私有资产管理，连同原六类共13类。新对象沿用页面实时预览、就近编辑、✓保存/×取消、CAS/commandId串行保存及补偿撤销重做。独立荧光笔已取消，不提供手动旋转PDF页面。
 
-产品调整（2026-10-16）：正式取消独立荧光笔及其工具栏占位。保留精确文本高亮与后续自由手绘，Change 02对象及导出目标统一为13类（B1六类文本批注+手绘+三形状+三插入）；B2 4.1仅开发手绘，目前尚未启动。现有六类API、数据和保存机制不变。
+B2开发与自动化结果、真实MySQL边界和逐项手动验收见 [P3-B2记录](docs/development/p3-b2.md)；用户实际功能/UI验收待进行，tasks 4.6保留该门槛。带批注导出/C1、C2和03–06尚未实施。历史记录见 [B1](docs/development/p3-b1.md) 及 [HANDOFF](HANDOFF.md)。
 
-B1历次测试包含后端pytest123/123（SQLite）、前端单测50/50和阅读器全量32/32；最后局部修复另有定向测试，不能视为再次全量通过。用户Docker功能/UI验收已完成，真实MySQL专项集成仍无通过证据。B1验收文档收尾未重跑业务测试；取消荧光笔的本次前端检查见B1记录末节。
+新增迁移0006_reader_assets与Pillow依赖，本次需同时重建API及nginx，API启动自动增量升级；保留已有账号、文献ID/题录、原PDF、批注和进度。私有资产沿用API专用PDF卷。已有.env无需重新初始化，禁止用down -v普通重启。本轮未运行Docker、业务数据库迁移或Git提交/推送/归档。
 
-以下命令默认从项目根目录开始；进入frontend/backend的代码块应分别在根目录打开终端执行，文档不依赖某台电脑的绝对目录。
-
-开发及测试详情见 [P1 验收记录](docs/development/p1-auth.md)。Docker 拉取、构建和启动由使用者手动执行，开发过程中不自动提交或推送代码。
-
-P2-A历史记录见[P2-A记录](docs/development/p2-a.md)。服务启动时自动增量迁移至0005_annotations，保留已有账号、文献ID和PDF；不重建业务表。私有命名卷`litera_pdf_data`仅API挂载；不要用`down -v`删除数据。数据库和PDF卷需一起备份。
-
-已验收的文献库布局沿用[P2-A UI记录](docs/development/p2-a-ui.md)：六列单行省略/浅色Tooltip、阅读/详情/更多菜单、右侧信息与编辑面板和局部草稿确认、右下角3秒通知（按B1最终反馈统一）。P2-B仅补充真实分类、筛选、历史及回收站交互，参考06–13截图。
-
-P2-B局部交互优化见[本轮UI记录](docs/development/p2-b-ui.md)：独立快捷移动/标签窗口、统一Element Plus下拉、300ms即时检索和真实上下文空状态；未改后端或数据库，完整分类编辑与既有生命周期保留。
+以下命令默认从项目根目录开始；代码块进入frontend/backend时分别在根目录新开终端。数据库和PDF卷须联合备份。既有文献库UI与历史说明见 [P2-B UI](docs/development/p2-b-ui.md)，阅读器基准见 [P3-A2 UI](docs/development/p3-a2-ux.md)。
 
 ## Windows CMD 启动
 
@@ -143,7 +135,7 @@ npm run dev -- --port 5173 --strictPort
 - [设计决策](docs/design/decisions.md)
 - [规划校验记录](docs/design/validation.md)
 
-Change 01及02 P3-A1/A2/B1均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0005_annotations，保留账号、文献、原PDF及独立进度。下一阶段为P3-B2（4.1–4.6），尚未启动；须另行授权，不自动开发、提交、推送或归档。管理员、跨用户共享等扩展另立change。
+Change 01及02 P3-A1/A2/B1均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0006_reader_assets，保留账号、文献、原PDF及独立进度。P3-B2已开发，等待用户实际功能/UI验收；不自动进入C1/C2或提交、推送、归档。管理员、跨用户共享等扩展另立change。
 
 ## P1 页面优化
 
@@ -159,4 +151,4 @@ Change 01及02 P3-A1/A2/B1均已通过实际验收；阶段历史分别见[P3-A2
 
 P3-A1历史交互补充：库/阅读器共享标签、标题阅读/详情下载、阅读组默认收起二级栏、侧栏拖动与Tooltip优化，以及首帧后真实最近阅读记录。实现/证据与手动步骤见[A1交互记录](docs/development/p3-a1-ux.md)，不含A2/批注业务。
 
-P3-A2历史UI补充将阅读器顶部压缩为48/40/40/40px，移除Footer，统一20px品牌/12px基础字号、SVG箭头与12px阅读间距，修复双页7px额外横向溢出；当时为12/36，后续B1已完成并验收，当前18/36。实现、前端测试及仅重建nginx的CMD验收步骤见[UI记录](docs/development/p3-a2-ux.md)。
+P3-A2历史UI补充将阅读器顶部压缩为48/40/40/40px，移除Footer，统一20px品牌/12px基础字号、SVG箭头与12px阅读间距，修复双页7px额外横向溢出；当时为12/36，后续B1完成并验收时18/36；本轮B2状态见开头。实现、前端测试及仅重建nginx的CMD验收步骤见[UI记录](docs/development/p3-a2-ux.md)。

@@ -1,6 +1,6 @@
 # 模块边界与依赖
 
-当前01已通过用户实际功能/UI验收，02 A1/A2已实现，B/C及03–06仍未实现。01可直接复用的身份/文件/题录/打开记录代码及02缺口见[交接](../../HANDOFF.md)和[02接入核对](../../openspec/changes/02-pdf-reader/design.md)。下文ReaderContext/NoteDraft/引用导航为公共目标契约，A2已提供真实context.ts类型/可取消事件；完整引用导航adapter留C2。
+当前01已通过用户实际功能/UI验收，02 A1/A2/B1已验收，B2已开发待实际UI验收，C及03–06仍未实现。01可直接复用的身份/文件/题录/打开记录代码及02缺口见[交接](../../HANDOFF.md)和[02接入核对](../../openspec/changes/02-pdf-reader/design.md)。下文ReaderContext/NoteDraft/引用导航为公共目标契约，A2已提供真实context.ts类型/可取消事件；完整引用导航adapter留C2。
 
 | 模块/负责人 | 拥有的数据与行为 | 使用公共契约 |
 | --- | --- | --- |

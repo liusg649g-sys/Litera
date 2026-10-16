@@ -1,5 +1,5 @@
 // Real standards-compliant PDF bytes, parsed by the server and PDF.js, never a renderer mock.
-export function readerPdf(label: string, count = 7, chinese = false, options: { outline?: boolean; scan?: boolean; split?: boolean; mixed?: boolean; detail?: boolean; annotation?: boolean; scripts?: boolean } = {}) {
+export function readerPdf(label: string, count = 7, chinese = false, options: { outline?: boolean; userUnit?: number; scan?: boolean; split?: boolean; mixed?: boolean; detail?: boolean; annotation?: boolean; scripts?: boolean } = {}) {
   const objects: string[] = []
   objects.push('<< /Type /Catalog /Pages 2 0 R >>')
   objects.push(`<< /Type /Pages /Kids [${Array.from({length:count},(_,i)=>`${3+i*2} 0 R`).join(' ')}] /Count ${count} >>`)
@@ -11,7 +11,7 @@ export function readerPdf(label: string, count = 7, chinese = false, options: { 
     const detail = options.detail ? '\nBT /F1 32 Tf 40 740 Td (Research title) Tj ET\nBT /F1 12 Tf 40 660 Td (Body text: sharp letters and image edges.) Tj ET\nq 180 0 0 160 40 440 cm BI /W 4 /H 4 /CS /RGB /BPC 8 /F /ASCIIHexDecode ID ' + Array.from({length:16},(_,n)=>(n+Math.floor(n/4))%2?'224488':'eeeeee').join('') + '> EI Q' : ''
     const annotation = options.annotation ? '\nBT /F1 12 Tf 40 600 Td (Precision ) Tj /F3 12 Tf (selection ) Tj /F1 12 Tf [(across) -420 ( split) -400 ( items and spaces.)] TJ ET\nBT /F3 12 Tf 40 586 Td (Compact italic line, punctuation and words.) Tj ET\nBT /F1 12 Tf 40 572 Td (Third line for reverse selection.) Tj ET\nBT /F1 12 Tf 350 600 Td (Separate column remains separate.) Tj ET' : ''
     const scripts = options.scripts ? '\nBT /F1 12 Tf 40 614 Td (Previous compact line, keep separate.) Tj ET\nBT /F1 12 Tf 40 600 Td (Body network) Tj /F1 7 Tf 5 Ts ([6]) Tj /F1 12 Tf 0 Ts ( continuation text.) Tj ET\nBT /F1 12 Tf 40 586 Td (Next compact line, keep separate.) Tj ET' : ''
-    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${mixed?700:612} 792] ${i===2?'/CropBox [20 30 600 770] /Rotate 90':''} /Resources << /Font << /F1 ${fontId} 0 R ${options.annotation?`/F3 ${fontId+(chinese?3:1)} 0 R`: ''} ${chinese?`/F2 ${fontId+1} 0 R`:''} >> >> /Contents ${contentId} 0 R >>`)
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${mixed?700:612} 792] ${options.userUnit?`/UserUnit ${options.userUnit}`:''} ${i===2?'/CropBox [20 30 600 770] /Rotate 90':''} /Resources << /Font << /F1 ${fontId} 0 R ${options.annotation?`/F3 ${fontId+(chinese?3:1)} 0 R`: ''} ${chinese?`/F2 ${fontId+1} 0 R`:''} >> >> /Contents ${contentId} 0 R >>`)
     objects.push(`<< /Length ${Buffer.byteLength(text+detail+annotation+scripts)} >>\nstream\n${text+detail+annotation+scripts}\nendstream`)
   }
   objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')

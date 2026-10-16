@@ -3,11 +3,11 @@ import { api } from '../api'
 import { auth } from '../auth'
 import type { NormalizedRect, SelectionPosition } from './context'
 
-export const annotationLabels = { highlight: '高亮', underline: '下划线', squiggly: '波浪线', strikeout: '删除线', comment: '注释', freeText: '自由文本' } as const
+export const annotationLabels = { highlight: '高亮', underline: '下划线', squiggly: '波浪线', strikeout: '删除线', comment: '注释', freeText: '自由文本', ink: '手绘', rectangle: '矩形', circle: '圆形', ellipse: '椭圆形', signature: '签名', watermark: '水印', image: '图片' } as const
 export const annotationColors = ['#F5D547', '#9B0000', '#47A58E', '#6395CF'] as const
 export type AnnotationType = keyof typeof annotationLabels
-export type Geometry = { kind: 'text'; positions: SelectionPosition[] } | { kind: 'anchor'; pageNumber: number; x: number; y: number } | { kind: 'box'; pageNumber: number; rect: NormalizedRect; rotation: 0 }
-export interface AnnotationData { id: string; type: AnnotationType; schemaVersion: 1; pageNumber: number; position: SelectionPosition[] | null; geometry: Geometry; style: { stroke?: string | null; fill?: string | null; opacity?: number; lineWidth?: number; fontSize?: number }; selectedText: string | null; content: string | null; color: string; assetId: null; zIndex: number }
+export type Geometry = { kind: 'text'; positions: SelectionPosition[] } | { kind: 'anchor'; pageNumber: number; x: number; y: number } | { kind: 'box'; pageNumber: number; rect: NormalizedRect; rotation: number } | { kind: 'points'; pageNumber: number; points: { x: number; y: number }[] }
+export interface AnnotationData { id: string; type: AnnotationType; schemaVersion: 1; pageNumber: number; position: SelectionPosition[] | null; geometry: Geometry; style: { stroke?: string | null; fill?: string | null; opacity?: number; lineWidth?: number; fontSize?: number }; selectedText: string | null; content: string | null; color: string; assetId: string | null; zIndex: number }
 export interface AnnotationDTO extends AnnotationData { documentId: string; version: number; createdAt: string; updatedAt: string }
 interface Result { commandId: string; annotationRevision: number; annotation: AnnotationDTO | null }
 interface Snapshot { items: AnnotationDTO[]; annotationRevision: number }
@@ -20,7 +20,7 @@ export function annotationData(value: AnnotationData): AnnotationData {
 }
 
 export function createAnnotations(documentId: string) {
-  const state = reactive({ items: [] as AnnotationDTO[], revision: 0, phase: 'loading' as 'loading'|'draft'|'sending'|'confirmed'|'failed'|'conflict', error: '', dirty: false, undoCount: 0, redoCount: 0, hasBackup: false })
+  const state = reactive({ items: [] as AnnotationDTO[], revision: 0, phase: 'loading' as 'loading'|'draft'|'sending'|'confirmed'|'failed'|'conflict', error: '', failureCode: '', dirty: false, undoCount: 0, redoCount: 0, hasBackup: false })
   const path = `/documents/${encodeURIComponent(documentId)}`
   const key = `litera:annotations:${auth.user?.id}:${documentId}`
   let server: AnnotationDTO[] = [], queue: Intent[] = [], tombstones: Record<string, AnnotationDTO> = {}
@@ -83,7 +83,7 @@ export function createAnnotations(documentId: string) {
       } else if (existing) {
         url += '/' + encodeURIComponent(job.id); method = 'PATCH'; body.version = existing.version
         const { color, content, style, geometry, zIndex } = job.desired
-        body.changes = { color, content, style, zIndex, ...(geometry.kind === 'text' ? {} : { geometry }) }
+        body.changes = { color, content, style, zIndex, ...(['image','signature'].includes(job.desired.type) ? {assetId:job.desired.assetId} : {}), ...(geometry.kind === 'text' ? {} : { geometry }) }
       } else if (tombstones[job.id]) { url = path + '/annotation-commands'; body.operation = 'restore'; body.annotation = tombstones[job.id] }
       else body.annotation = annotationData(job.desired)
       job.prepared = { path: url, method, body, at: Date.now() }; project()
@@ -111,10 +111,19 @@ export function createAnnotations(documentId: string) {
       while (queue.length && !state.error && !disposed) {
         state.phase = 'sending'
         try { await execute(queue[0]!); queue.shift(); project(); state.phase = queue.length ? 'draft' : 'confirmed' }
-        catch (error: any) { state.phase = error.status === 409 ? 'conflict' : 'failed'; state.error = error.status === 409 ? '批注发生并发冲突；本地草稿已保留。请导出草稿或核对服务端后处理。' : `批注未保存：${error.message || '请求失败'}。草稿已保留，请重试。`; project(); break }
+        catch (error: any) { state.failureCode = error.code || ''; state.phase = error.status === 409 ? 'conflict' : 'failed'; state.error = error.status === 409 ? '批注发生并发冲突；本地草稿已保留。请导出草稿或核对服务端后处理。' : `批注未保存：${error.message || '请求失败'}。草稿已保留，请重试。`; project(); break }
       }
     })()
     try { await inFlight } finally { inFlight = undefined }
+  }
+  function replaceFailedAsset(id:string, assetId:string, geometry:Geometry) {
+    // Only a definite server validation rejection permits a fresh command body.
+    // Unknown outcomes always keep the original prepared command for reconciliation.
+    const job=queue[0]
+    if(state.failureCode!=='ASSET_UNAVAILABLE' || !job?.desired || job.id!==id) return false
+    job.desired.assetId=assetId;job.desired.geometry=clone(geometry); job.prepared=undefined
+    for(const entry of undoStack)if(entry.after?.id===id){entry.after.assetId=assetId;entry.after.geometry=clone(geometry)}
+    state.failureCode=''; project(); return true
   }
   async function retry() { if (state.phase === 'conflict' || corruptDraft) return; state.error = ''; await flush() }
   async function undo() {
@@ -152,5 +161,5 @@ export function createAnnotations(documentId: string) {
     } catch { state.error = '浏览器无法保留批注草稿，请先导出草稿或恢复网络保存。'; return false }
   }
   function dispose(clear = false) { disposed = true; cleared = clear; clearTimeout(timer); if (clear) sessionStorage.removeItem(key) }
-  return { state, load, create, edit, remove, flush, retry, undo, redo, reloadServer, preserveForLeave, exportDraft, dispose }
+  return { state, load, create, edit, replaceFailedAsset, remove, flush, retry, undo, redo, reloadServer, preserveForLeave, exportDraft, dispose }
 }

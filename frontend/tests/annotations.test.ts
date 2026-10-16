@@ -77,3 +77,26 @@ describe('annotation command queue',()=>{
     expect(Object.keys(sessionStorage).some(k=>k.startsWith('litera:annotations:'))).toBe(false)
   })
 })
+
+
+describe('B2 asset recovery command safety',()=>{
+  it('replaces only a definitively rejected asset using a fresh command and preserves undo',async()=>{
+    const db=backend(),fetcher=globalThis.fetch;let rejectAsset=true
+    vi.stubGlobal('fetch',vi.fn(async(url:any,options:any={})=>{
+      if(options.method==='POST' && String(url).endsWith('/annotations') && rejectAsset)return new Response(JSON.stringify({error:{code:'ASSET_UNAVAILABLE',message:'图片已失效'}}),{status:422})
+      return fetcher(url,options)
+    }))
+    const manager=createAnnotations('doc');await manager.load()
+    const geometry={kind:'box' as const,pageNumber:1,rotation:0,rect:{x:.1,y:.2,width:.3,height:.2}}
+    manager.create({...original,type:'image',assetId:'expired',geometry});await manager.flush()
+    expect(manager.state.phase).toBe('failed');expect(manager.state.failureCode).toBe('ASSET_UNAVAILABLE')
+    expect(manager.replaceFailedAsset('annotation','new-asset',geometry)).toBe(true)
+    rejectAsset=false;await manager.retry();expect(db.items[0]!.assetId).toBe('new-asset');expect(manager.state.dirty).toBe(false)
+    await manager.undo();expect(db.items).toHaveLength(0);await manager.redo();expect(db.items[0]!.assetId).toBe('new-asset');manager.dispose()
+  })
+  it('does not rewrite an unknown command outcome or conflict',async()=>{
+    const db=backend(),manager=createAnnotations('doc');await manager.load();db.loseNext();manager.create(original);await manager.flush()
+    expect(manager.replaceFailedAsset(original.id,'other',{kind:'box',pageNumber:1,rotation:0,rect:{x:.1,y:.2,width:.2,height:.2}})).toBe(false)
+    await manager.retry();expect(db.items).toHaveLength(1);manager.dispose()
+  })
+})

@@ -176,7 +176,12 @@ def run_cleanup(db, job):
             db.rollback(); db.expire_all(); job = db.get(CleanupJob, job.id)
             return Response(status_code=204) if job.status == "completed" else job_response(job)
         # A missing file after an interrupted cleanup counts as already removed.
+        from .models import ReaderAsset
+        from .reader_assets import asset_storage_path
+        for asset in db.scalars(select(ReaderAsset).where(ReaderAsset.document_id == job.document_id, ReaderAsset.owner_id == job.owner_id).with_for_update()):
+            asset_storage_path(asset.storage_key).unlink(missing_ok=True)
         storage_path(job.storage_key).unlink(missing_ok=True)
+        db.execute(delete(ReaderAsset).where(ReaderAsset.document_id == job.document_id, ReaderAsset.owner_id == job.owner_id))
         for model in (AnnotationCommandReceipt, Annotation, DocumentReaderState):
             db.execute(delete(model).where(model.document_id == job.document_id, model.owner_id == job.owner_id))
         db.execute(delete(DocumentTag).where(DocumentTag.document_id == job.document_id, DocumentTag.owner_id == job.owner_id))

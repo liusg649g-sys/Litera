@@ -5,9 +5,12 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import type { SearchMatch } from '../reader/search'
 import PdfAnnotations from './PdfAnnotations.vue'
+import PdfDrawingObjects from './PdfDrawingObjects.vue'
+import { drawingTypes } from '../reader/objectGeometry'
+import type { ReaderAsset } from '../reader/assets'
 import type { AnnotationDTO, AnnotationType } from '../reader/annotations'
-const props = defineProps<{ pdf: PDFDocumentProxy; pageNumber: number; root: HTMLElement; scale: number; size: { width: number; height: number }; matches: SearchMatch[]; selected: string; annotations?: AnnotationDTO[]; selectedAnnotation?: string; annotationTool?: AnnotationType | 'erase' | ''; annotationEnabled?: boolean; annotationEditor?: AnnotationDTO | null; editorLocked?: boolean; editorBusy?: boolean; editingActive?: boolean }>()
-const emit = defineEmits<{ ready: [number]; failure: [unknown]; annotationSelect: [AnnotationDTO]; annotationPlace: [number, number, number]; annotationMove: [string, AnnotationDTO['geometry']]; annotationEdit: [AnnotationDTO]; annotationDraft: [AnnotationDTO]; annotationSave: []; annotationCancel: [] }>()
+const props = defineProps<{ pdf: PDFDocumentProxy; documentId: string; drawingColor: string; drawingWidth: number; drawingOpacity: number; placement?: ReaderAsset | null; pageNumber: number; root: HTMLElement; scale: number; size: { width: number; height: number }; matches: SearchMatch[]; selected: string; annotations?: AnnotationDTO[]; selectedAnnotation?: string; annotationTool?: AnnotationType | 'erase' | ''; annotationEnabled?: boolean; annotationGroup?: string; annotationEditor?: AnnotationDTO | null; editorLocked?: boolean; editorBusy?: boolean; editingActive?: boolean }>()
+const emit = defineEmits<{ ready: [number]; failure: [unknown]; annotationSelect: [AnnotationDTO]; annotationPlace: [number, number, number]; annotationMove: [string, AnnotationDTO['geometry']]; annotationEdit: [AnnotationDTO]; annotationDraft: [AnnotationDTO]; annotationSave: []; annotationCancel: []; annotationDraw: [AnnotationType,AnnotationDTO['geometry']]; annotationWarning: [string]; annotationReplaceAsset: [] }>()
 const host = ref<HTMLElement>(), canvas = ref<HTMLCanvasElement>(), text = ref<HTMLElement>()
 const dimensions = computed(() => ({ width: props.size.width * props.scale, height: props.size.height * props.scale }))
 const highlights = ref<{ id: string; x: number; y: number; width: number; height: number }[]>([])
@@ -29,6 +32,9 @@ function selectTextMark(event: MouseEvent) {
   // hit test selects an annotation only when the gesture was not a text drag.
   if (Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>3 || !window.getSelection()?.isCollapsed) return
   if (props.annotationTool && props.annotationTool !== 'erase') return
+  if (!props.annotationEnabled) {
+    for(const el of [...host.value!.querySelectorAll<SVGGraphicsElement>('[data-drawing]')].reverse()) { const r=el.getBoundingClientRect(); if(event.clientX>=r.left && event.clientX<=r.right && event.clientY>=r.top && event.clientY<=r.bottom) { const a=props.annotations?.find(a=>a.id===el.dataset.drawing);if(a){emit('annotationSelect',a);return} } }
+  }
   for (const polygon of [...host.value!.querySelectorAll<SVGPolygonElement>('.annotation-text-mark polygon')].reverse()) {
     const r = polygon.getBoundingClientRect()
     if (event.clientX<r.left || event.clientX>r.right || event.clientY<r.top || event.clientY>r.bottom) continue
@@ -127,7 +133,8 @@ onBeforeUnmount(() => { disposed = true; wanted = false; clearTimeout(zoomTimer)
     <canvas ref="canvas" width="0" height="0" :aria-label="`PDF 第 ${pageNumber} 页画布`" />
     <div ref="text" class="textLayer" :style="{ visibility: status === '已渲染' ? 'visible' : 'hidden' }" @pointerdown="startTextSelection" @dragstart.prevent />
     <div class="pdf-search-layer" aria-hidden="true"><span v-for="(mark, i) in highlights" :key="i" :data-match="mark.id" :class="{ current: mark.id === selected }" :style="{ left: mark.x + 'px', top: mark.y + 'px', width: mark.width + 'px', height: mark.height + 'px' }" /></div>
-    <PdfAnnotations :pdf="pdf" :page-number="pageNumber" :scale="scale" :items="annotations || []" :editor="annotationEditor" :editor-locked="editorLocked" :editor-busy="editorBusy" :editing-active="editingActive" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationEnabled || false" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" @place="(p,x,y) => emit('annotationPlace',p,x,y)" @move="(id,g) => emit('annotationMove',id,g)" />
+    <PdfAnnotations :pdf="pdf" :page-number="pageNumber" :scale="scale" :items="(annotations || []).filter(a=>!drawingTypes.includes(a.type))" :editor="annotationEditor?.type==='freeText' ? annotationEditor : null" :editor-locked="editorLocked" :editor-busy="editorBusy" :editing-active="editingActive" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationGroup==='批注'" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" @place="(p,x,y) => emit('annotationPlace',p,x,y)" @move="(id,g) => emit('annotationMove',id,g)" />
+    <PdfDrawingObjects :pdf="pdf" :document-id="documentId" :page-number="pageNumber" :scale="scale" :items="annotations || []" :editor="annotationEditor" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationEnabled || false" :group="annotationGroup || '阅读'" :locked="editorLocked" :busy="editorBusy" :editing-active="editingActive" :color="drawingColor" :line-width="drawingWidth" :opacity="drawingOpacity" :placement="placement" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @move="(id,g)=>emit('annotationMove',id,g)" @draw="(type,g)=>emit('annotationDraw',type,g)" @warning="emit('annotationWarning',$event)" @replace-asset="emit('annotationReplaceAsset')" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" />
     <span v-if="status === '正在渲染'" class="pdf-page-loading" role="status" :aria-label="`正在加载第 ${pageNumber} 页`" />
   </section>
 </template>

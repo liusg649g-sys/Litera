@@ -44,15 +44,16 @@ class UploadLimitMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["method"] == "POST" and scope["path"] == "/api/v1/documents":
+        if scope["type"] == "http" and scope["method"] == "POST" and (scope["path"] == "/api/v1/documents" or scope["path"].endswith("/reader-assets")):
             total = 0
             async def limited_receive():
                 nonlocal total
                 message = await receive()
                 if message["type"] == "http.request":
                     total += len(message.get("body", b""))
-                    if total > settings.max_upload_bytes + 65536:
+                    if total > (5 * 1024 * 1024 if scope["path"].endswith("/reader-assets") else settings.max_upload_bytes) + 65536:
                         scope.setdefault("state", {})["upload_too_large"] = True
+                        scope["state"]["upload_limit"] = 5 * 1024 * 1024 if scope["path"].endswith("/reader-assets") else settings.max_upload_bytes
                         raise UploadTooLarge()
                 return message
             await self.app(scope, limited_receive, send)

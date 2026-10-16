@@ -12,6 +12,10 @@ import PdfOutline from '../components/PdfOutline.vue'
 import type { OutlineNode } from '../components/PdfOutline.vue'
 import PdfSearch from '../components/PdfSearch.vue'
 import AnnotationList from '../components/AnnotationList.vue'
+import SignaturePad from '../components/SignaturePad.vue'
+import ReaderAssetManager from '../components/ReaderAssetManager.vue'
+import { bounds, drawingTypes } from '../reader/objectGeometry'
+import { uploadAsset, discardAsset, type ReaderAsset } from '../reader/assets'
 import AnnotationToolIcon from '../components/AnnotationToolIcon.vue'
 import { annotationLabels, annotationColors, createAnnotations } from '../reader/annotations'
 import type { AnnotationDTO, AnnotationData, AnnotationType } from '../reader/annotations'
@@ -60,13 +64,44 @@ watch(() => annotations.value?.state.phase, (phase, previous) => {
 })
 onBeforeUnmount(() => { clearTimeout(savedTimer); clearTimeout(annotationNoticeTimer) })
 const annotationTool = ref<AnnotationType | 'erase' | ''>(''), annotationColor = ref('#F5D547'), selectedAnnotation = ref('')
+const drawingWidth=ref(2),drawingOpacity=ref(1),placement=ref<ReaderAsset|null>(null),signatureOpen=ref(false),assetBusy=ref(false),assetError=ref('')
+const assetManagerOpen=ref(false)
+const editorAssets=new Set<string>()
+let assetUploadController:AbortController|undefined,inkInitialized=false,colorCustomized=false
+const assetFile=ref<HTMLInputElement>(),importType=ref<'image'|'signature'>('image'),retryFile=shallowRef<Blob|null>(null)
+function cancelPlacement(){assetUploadController?.abort();assetUploadController=undefined;assetBusy.value=false;retryFile.value=null;assetError.value='';signatureOpen.value=false;annotationTool.value='';const asset=placement.value;placement.value=null;if(asset)void discardAsset(String(route.params.documentId),asset.assetId).then(result=>{if(result)notice.value='图片清理尚未完成，可在资产管理重试。'}).catch(()=>{notice.value='图片清理失败，已登记并将自动重试，也可在资产管理重试。'})}
+async function importAsset(file:Blob,type:'image'|'signature'){
+  if(assetBusy.value)return
+  const id=String(route.params.documentId),controller=new AbortController();assetUploadController=controller;let timedOut=false;const timeout=setTimeout(()=>{timedOut=true;controller.abort()},30000);assetBusy.value=true;assetError.value='';retryFile.value=file;importType.value=type
+  try{const asset=await uploadAsset(id,file,controller.signal);if(String(route.params.documentId)!==id){void discardAsset(id,asset.assetId);return}if(editor.value && ['image','signature'].includes(editor.value.type)){
+      const physical=await pdf.value!.getPage(editor.value.pageNumber),g=editor.value.geometry
+      if(g.kind!=='box')return
+      const w=physical.view[2]!-physical.view[0]!,h=physical.view[3]!-physical.view[1]!,ratio=asset.width/asset.height
+      const width=Math.min(g.rect.width,(1-g.rect.y)*h/w*ratio),geometry={...g,rect:{...g.rect,width,height:width*w/h/ratio}}
+      if(editorSubmitted.value && !annotations.value?.replaceFailedAsset(editor.value.id,asset.assetId,geometry)){void discardAsset(id,asset.assetId);assetError.value='请先核对原保存命令；仅资产失效的确定失败可更换图片后重试。';return}
+      editorAssets.add(asset.assetId);const original=editor.value.assetId;editor.value={...editor.value,assetId:asset.assetId,geometry}
+      if(original && editorNew.value)void discardAsset(id,original).catch(()=>{})
+    }else{placement.value=asset;signatureOpen.value=false;annotationTool.value=type}
+    retryFile.value=null}
+  catch(error:any){if(!controller.signal.aborted || timedOut)assetError.value=timedOut?'图片上传超时，文件已保留，可重试上传。':error.message || '上传失败，请重试'}finally{clearTimeout(timeout);if(assetUploadController===controller){assetBusy.value=false;assetUploadController=undefined}}
+}
+function pickAsset(type:'image'|'signature'){importType.value=type;assetFile.value?.click()}
+function fileChosen(event:Event){const input=event.target as HTMLInputElement,file=input.files?.[0];if(file)void importAsset(file,importType.value);input.value=''}
+function drawingCreated(type:AnnotationType,geometry:AnnotationData['geometry']){
+  if(editor.value || assetBusy.value)return
+  const data=newAnnotation(type,geometry);data.style={...data.style,lineWidth:drawingWidth.value,opacity:type==='watermark'?.25:drawingOpacity.value,fontSize:type==='watermark'?30:14};data.color=annotationColor.value
+  if(type==='watermark')data.content='水印'
+  if(['image','signature'].includes(type)){if(!placement.value)return;data.assetId=placement.value.assetId;editorAssets.add(data.assetId);placement.value=null}
+  if(type==='ink'){annotations.value?.create(data);selectedAnnotation.value=''}else{annotationTool.value='';setEditor(data,true,false)}
+}
 const editor = ref<AnnotationDTO | null>(null), editorNew = ref(false)
 const editorDialog = ref<HTMLDialogElement>()
 let annotationDraftRetained = false
 const editorBusy = ref(false), editorSubmitted = ref(false), editorReverting = ref(false)
-function editingBlocked() { if (!editor.value) return false; notice.value = '请先 ✓ 保存或 × 取消当前批注编辑。'; return true }
+function editingBlocked() { if (!editor.value && !assetBusy.value && !placement.value && !signatureOpen.value && !retryFile.value) return false; notice.value = '请先 ✓ 保存或 × 取消当前批注编辑。'; return true }
 function setEditor(data: AnnotationDTO, isNew = false, navigate = true) {
   if (editingBlocked()) return
+  editorAssets.clear();if(isNew && data.assetId)editorAssets.add(data.assetId)
   editorNew.value = isNew; editorSubmitted.value = false; editorReverting.value=false; editor.value = JSON.parse(JSON.stringify(data)); selectedAnnotation.value = data.id
   if (data.type==='comment') { rightPanel.value='批注列表'; rightOpen.value=true }
   else if (data.type==='freeText') { if(window.innerWidth<1100) rightOpen.value=false; if(!isNew && navigate) void navigateAnnotation(data) }
@@ -78,8 +113,8 @@ function moveAnnotation(id: string, geometry: AnnotationDTO['geometry']) {
 }
 function removeAnnotation(id: string) { if (!editingBlocked()) annotations.value?.remove(id) }
 function closeRight() { if (!editingBlocked()) rightOpen.value=false }
-watch(editor, async value => { await nextTick(); if (value && !['comment','freeText'].includes(value.type) && !editorDialog.value?.open) editorDialog.value?.showModal(); else if ((!value || ['comment','freeText'].includes(value.type)) && editorDialog.value?.open) editorDialog.value.close() })
-watch([() => annotations.value?.state.phase,editorBusy], () => { if(editorSubmitted.value && !editorBusy.value && annotations.value?.state.phase==='confirmed' && !annotations.value.state.dirty) { editor.value=null; editorSubmitted.value=false; selectedAnnotation.value='' } })
+watch(editor, async value => { await nextTick(); if (value && !['comment','freeText',...drawingTypes].includes(value.type) && !editorDialog.value?.open) editorDialog.value?.showModal(); else if ((!value || ['comment','freeText',...drawingTypes].includes(value.type)) && editorDialog.value?.open) editorDialog.value.close() })
+watch([() => annotations.value?.state.phase,editorBusy], () => { if(editorSubmitted.value && !editorBusy.value && annotations.value?.state.phase==='confirmed' && !annotations.value.state.dirty) { editorAssets.clear();editor.value=null; editorSubmitted.value=false; selectedAnnotation.value='' } })
 const selectedObject = computed(() => annotations.value?.state.items.find(a => a.id === selectedAnnotation.value))
 const typeForLabel = (label: string) => (Object.keys(annotationLabels) as AnnotationType[]).find(key => annotationLabels[key] === label)
 function newAnnotation(type: AnnotationType, geometry: AnnotationData['geometry'], selectedText: string | null = null): AnnotationDTO {
@@ -103,13 +138,16 @@ function chooseTool(label: string) {
   if (!type) { pending(label); return }
   if (!pdf.value || annotations.value?.state.phase === 'loading') return
   selectedAnnotation.value = ''; annotationTool.value = type
-  if (type !== 'freeText') createFromSelection(type)
+  if(type==='ink' && !inkInitialized){inkInitialized=true;if(!colorCustomized)annotationColor.value='#9B0000'}
+  if(type==='image'){annotationTool.value='';pickAsset('image');return}
+  if(type==='signature'){annotationTool.value='';signatureOpen.value=true;return}
+  if (!drawingTypes.includes(type) && type !== 'freeText') createFromSelection(type)
 }
 async function selectionFinished(event: PointerEvent) {
   if (group.value !== '批注' || editor.value) return
   if ((event.target as Element).closest('.annotation-hit')) return
   const type = annotationTool.value
-  if (type && type !== 'erase' && type !== 'freeText') createFromSelection(type)
+  if (type && type !== 'erase' && type !== 'freeText' && !drawingTypes.includes(type)) createFromSelection(type)
 }
 function placeAnnotation(pageNumber: number, x: number, y: number) {
   if (editingBlocked()) return
@@ -120,7 +158,9 @@ function placeAnnotation(pageNumber: number, x: number, y: number) {
 }
 async function openEditor(item: AnnotationDTO, navigate = true) {
   if (editor.value) { editingBlocked(); return }
-  if (item.type==='freeText' && group.value!=='批注') { group.value='批注'; await nextTick() }
+  const targetGroup=['rectangle','circle','ellipse'].includes(item.type)?'形状':['image','signature','watermark'].includes(item.type)?'插入':'批注'
+  if ((drawingTypes.includes(item.type) || item.type==='freeText') && group.value!==targetGroup) { group.value=targetGroup; await nextTick() }
+  annotationTool.value=''
   setEditor(item,false,navigate)
 }
 async function cancelEditor() {
@@ -135,13 +175,15 @@ async function cancelEditor() {
       if (manager.state.error || manager.state.dirty) return
     } finally { editorBusy.value=false }
   }
+  if(editor.value && !editorSubmitted.value)for(const assetId of editorAssets)void discardAsset(editor.value.documentId,assetId).catch(()=>{notice.value='未引用图片已登记，稍后自动清理；可从资产管理重试。'})
+  editorAssets.clear()
   editor.value=null; editorSubmitted.value=false; editorReverting.value=false; selectedAnnotation.value=''
 }
 async function saveEditor() {
   if (editorReverting.value) { await cancelEditor(); return }
   if (!editor.value || editorBusy.value) return
   const data = editor.value, manager = annotations.value
-  if (!manager || (['comment','freeText'].includes(data.type) && !data.content?.trim())) return
+  if (!manager || (['comment','freeText','watermark'].includes(data.type) && !data.content?.trim())) return
   editorBusy.value=true
   try {
     if (!editorSubmitted.value) {
@@ -150,14 +192,14 @@ async function saveEditor() {
       editorSubmitted.value=true
     }
     if (manager.state.error) await manager.retry(); else await manager.flush()
-    if (!manager.state.dirty && !manager.state.error && annotations.value===manager) { selectedAnnotation.value=''; editor.value=null; editorSubmitted.value=false }
+    if (!manager.state.dirty && !manager.state.error && annotations.value===manager) { editorAssets.clear();selectedAnnotation.value=''; editor.value=null; editorSubmitted.value=false }
   } finally { editorBusy.value=false }
 }
 function selectAnnotation(item: AnnotationDTO) {
   if (editor.value?.id===item.id) return
   if (editor.value && editor.value.id!==item.id) { editingBlocked(); return }
-  if (group.value === '批注' && annotationTool.value==='erase') { annotations.value?.remove(item.id); return }
-  selectedAnnotation.value = item.id; if (group.value==='阅读' || item.type!=='freeText') { rightPanel.value = '批注列表'; rightOpen.value = true }
+  if (group.value !== '阅读' && annotationTool.value==='erase') { annotations.value?.remove(item.id); return }
+  selectedAnnotation.value = item.id; if (group.value==='阅读' || (!drawingTypes.includes(item.type) && item.type!=='freeText')) { rightPanel.value = '批注列表'; rightOpen.value = true }
 
 }
 async function navigateAnnotation(item: AnnotationDTO) {
@@ -165,10 +207,10 @@ async function navigateAnnotation(item: AnnotationDTO) {
   selectedAnnotation.value = item.id; jump(item.pageNumber)
   const token = generation, page = await pdf.value?.getPage(item.pageNumber)
   if (!page || token!==generation) return
-  const g = item.geometry, r = g.kind==='text' ? g.positions[0]!.rects[0]! : g.kind==='box' ? g.rect : g
+  const r = bounds(item.geometry)
   navigation = { page: item.pageNumber, annotationId: item.id, point: normalizedToViewport(page.getViewport({scale:scale.value}),r.x,r.y) }; await nextTick(); await locate()
 }
-function changeColor(color: string) { annotationColor.value=color; if(editor.value) { if(!editorSubmitted.value) editor.value={...editor.value,color}; return }; if (selectedObject.value) annotations.value?.edit(selectedObject.value.id,{ color }) }
+function changeColor(color: string) { colorCustomized=true;annotationColor.value=color; if(editor.value) { if(!editorSubmitted.value) editor.value={...editor.value,color}; return }; if (selectedObject.value) annotations.value?.edit(selectedObject.value.id,{ color }) }
 async function reloadAnnotations() {
   try { await annotations.value?.reloadServer(); editor.value=null; editorSubmitted.value=false; selectedAnnotation.value = ''; showCornerNotice(); notice.value = '已载入服务端批注并清空撤销历史，保留的本地草稿可导出。' }
   catch { notice.value = '无法核对服务端批注，本地草稿仍保留，请稍后重试。' }
@@ -180,7 +222,7 @@ async function annotationKeys(event: KeyboardEvent) {
   const target = event.target as HTMLElement
   if (editor.value && event.key==='Escape' && !target.closest('input,textarea,select')) { event.preventDefault(); cancelEditor(); return }
   if (editor.value || target.isContentEditable || target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="dialog"]') || !target.closest('.reader-workspace')) return
-  if (event.key === 'Escape') { selectedAnnotation.value = ''; annotationTool.value = ''; return }
+  if (event.key === 'Escape') { cancelPlacement(); selectedAnnotation.value = ''; annotationTool.value = ''; return }
   if ((event.ctrlKey || event.metaKey) && ['z','y'].includes(event.key.toLowerCase())) { event.preventDefault(); if (event.key.toLowerCase()==='y' || event.shiftKey) await annotations.value?.redo(); else await annotations.value?.undo() }
   else if (['Delete','Backspace'].includes(event.key) && viewport.value?.contains(target) && selectedObject.value) { event.preventDefault(); annotations.value?.remove(selectedObject.value.id) }
 }
@@ -212,7 +254,7 @@ function pageReady(number: number) {
 }
 async function beforeLeave() {
   if (!auth.user) return true
-  if (editor.value) { notice.value = '请先保存或取消批注编辑，再离开。'; return false }
+  if (editor.value || placement.value || signatureOpen.value || assetBusy.value || retryFile.value) { notice.value = '请先保存或取消当前创建/编辑，再离开。'; return false }
   await annotations.value?.flush(); await progress.value?.flush()
   if (annotations.value?.state.dirty && !annotationDraftRetained) { notice.value = '批注尚未保存，请重试、导出草稿或明确保留草稿后离开。'; return false }
   return !progress.value?.status.dirty || (!!failure.value && !pdf.value)
@@ -312,12 +354,12 @@ async function resolveProgress(local: boolean) {
   } catch { notice.value = '无法读取最新阅读记录，请稍后重试'; }
 }
 function pending(name: string) { notice.value = `${name}功能开发中，本阶段不会创建或保存批注数据。` }
-watch(group, value => { selectedAnnotation.value = ''; annotationTool.value = ''; if (value === '阅读') notice.value = '' })
+watch(group, value => { assetManagerOpen.value=false;selectedAnnotation.value = ''; annotationTool.value = ''; if (value === '阅读') {cancelPlacement();notice.value = ''} })
 function openRight(name: string) { if (editor.value && name!=='批注列表') { editingBlocked(); return }; rightPanel.value = name; rightOpen.value = true }
 async function load(full = false) {
   const token = ++generation, id = String(route.params.documentId)
   suppressScroll = false; layoutRevision++; cancelAnimationFrame(layoutFrame)
-  group.value = '阅读'
+  group.value = '阅读';assetManagerOpen.value=false;assetError.value='';retryFile.value=null
   metadataRequest?.abort(); metadataRequest = new AbortController()
   const signal = metadataRequest.signal
   const old = resource; resource = undefined
@@ -477,7 +519,7 @@ watch(() => auth.user, (user, previous) => {
     void nextTick(() => { void old?.destroy().catch(() => {}) })
   }
 })
-function beforeUnload(event: BeforeUnloadEvent) { if (progress.value?.status.dirty || annotations.value?.state.dirty || editor.value) { void progress.value?.flush(); void annotations.value?.flush(); event.preventDefault(); event.returnValue = '' } }
+function beforeUnload(event: BeforeUnloadEvent) { if (progress.value?.status.dirty || annotations.value?.state.dirty || editor.value || placement.value || signatureOpen.value || assetBusy.value || retryFile.value) { void progress.value?.flush(); void annotations.value?.flush(); event.preventDefault(); event.returnValue = '' } }
 onMounted(() => {
   viewport.value?.addEventListener('wheel', wheel, { passive: false })
   document.addEventListener('selectionchange', selectionChanged); window.addEventListener('beforeunload', beforeUnload)
@@ -518,9 +560,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div v-if="group !== '阅读'" class="reader-secondary" :aria-label="`${group}工具栏`"><el-tooltip v-for="tool in activeTools" :key="tool[0]" :content="tool[0]" effect="light" :show-after="250"><button :aria-label="typeForLabel(tool[0]) ? tool[0] : `${tool[0]}（功能开发中）`" :aria-disabled="!typeForLabel(tool[0])" :aria-pressed="!!typeForLabel(tool[0]) && annotationTool === typeForLabel(tool[0])" :class="{ selected: !!typeForLabel(tool[0]) && annotationTool === typeForLabel(tool[0]) }" @mousedown.prevent @click="chooseTool(tool[0])"><AnnotationToolIcon v-if="group==='批注'" :name="tool[0]"/><component v-else :is="tool[1]" /><span>{{ tool[0] }}</span></button></el-tooltip>
-      <span class="reader-toolbar-rule" /><button v-for="color in annotationColors" :key="color" class="reader-color" :class="{ selected: annotationColor===color }" :style="{ '--swatch': color }" :aria-label="`颜色 ${color}`" @mousedown.prevent @click="changeColor(color)" /><input type="color" :value="annotationColor" aria-label="自定义批注颜色" @input="changeColor(($event.target as HTMLInputElement).value)">
-      <button aria-label="选择批注" :aria-pressed="annotationTool === ''" @click="!editingBlocked() && (annotationTool = '', selectedAnnotation = '')">选择</button><button aria-label="撤销批注" :disabled="!annotations?.state.undoCount || !!annotations.state.error" @click="!editingBlocked() && annotations?.undo()"><RefreshLeft /></button><button aria-label="重做批注" :disabled="!annotations?.state.redoCount || !!annotations.state.error" @click="!editingBlocked() && annotations?.redo()"><RefreshRight /></button><button aria-label="橡皮擦" :class="{ selected: annotationTool==='erase' }" :aria-pressed="annotationTool==='erase'" @click="!editingBlocked() && (annotationTool = annotationTool==='erase' ? '' : 'erase')"><Delete /></button><button v-if="selectedObject" aria-label="编辑选中批注" @click="openEditor(selectedObject)">编辑</button><button v-if="selectedObject" aria-label="删除选中批注" @click="removeAnnotation(selectedObject.id)">删除</button><span class="reader-stage-hint">{{ annotationTool==='erase' ? '点击批注删除' : annotationTool ? '选择文本或点击页面创建' : '选择文本后使用批注工具' }}</span>
+      <button v-if="group==='插入'" @click="assetManagerOpen=!assetManagerOpen">资产管理</button><span class="reader-toolbar-rule" /><button v-for="color in annotationColors" :key="color" class="reader-color" :class="{ selected: annotationColor===color }" :style="{ '--swatch': color }" :aria-label="`颜色 ${color}`" @mousedown.prevent @click="changeColor(color)" /><input type="color" :value="annotationColor" aria-label="自定义批注颜色" @input="changeColor(($event.target as HTMLInputElement).value)">
+      <button aria-label="选择批注" :aria-pressed="annotationTool === ''" @click="!editingBlocked() && (annotationTool = '', selectedAnnotation = '')">选择</button><button aria-label="撤销批注" :disabled="!annotations?.state.undoCount || !!annotations.state.error" @click="!editingBlocked() && annotations?.undo()"><RefreshLeft /></button><button aria-label="重做批注" :disabled="!annotations?.state.redoCount || !!annotations.state.error" @click="!editingBlocked() && annotations?.redo()"><RefreshRight /></button><button aria-label="橡皮擦" :class="{ selected: annotationTool==='erase' }" :aria-pressed="annotationTool==='erase'" @click="!editingBlocked() && (annotationTool = annotationTool==='erase' ? '' : 'erase')"><Delete /></button><button v-if="selectedObject" aria-label="编辑选中批注" @click="openEditor(selectedObject)">编辑</button><button v-if="selectedObject" aria-label="删除选中批注" @click="removeAnnotation(selectedObject.id)">删除</button><label v-if="annotationTool==='ink' || ['rectangle','circle','ellipse'].includes(annotationTool)">线宽<input v-model.number="drawingWidth" aria-label="画笔线宽" type="number" min="0.25" max="20" step="0.25"></label><label v-if="drawingTypes.includes(annotationTool)">透明度<input v-model.number="drawingOpacity" aria-label="绘制透明度" type="number" min="0.05" max="1" step="0.05"></label><button v-if="placement || signatureOpen" @click="cancelPlacement">× 取消放置</button><span class="reader-stage-hint">{{ annotationTool==='erase' ? '点击批注删除' : drawingTypes.includes(annotationTool) ? (['ink','rectangle','circle','ellipse'].includes(annotationTool)?'按下并拖动绘制 · Esc 取消':'移动鼠标预览 · 点击放置 · Esc 取消') : annotationTool ? '选择文本或点击页面创建' : '选择文本后使用批注工具' }}</span>
     </div>
+    <input ref="assetFile" type="file" accept="image/png,image/jpeg" aria-label="选择本地图片" hidden @change="fileChosen">
+    <ReaderAssetManager v-if="assetManagerOpen" :document-id="String(route.params.documentId)" :key="String(route.params.documentId)" @close="assetManagerOpen=false" />
+    <SignaturePad v-if="signatureOpen" @confirm="importAsset($event,'signature')" @import="pickAsset('signature')" @cancel="cancelPlacement" />
+    <div v-if="assetBusy || assetError" class="reader-notice" role="status">{{ assetBusy?'正在安全校验图片…':assetError }}<button v-if="assetError && retryFile" @click="importAsset(retryFile,importType)">重试上传</button><button @click="cancelPlacement">× 取消</button></div>
     <div v-if="annotations && pdf && showAnnotationNotice" class="annotation-save-status" aria-live="polite">{{ annotations.state.phase==='sending' ? '正在保存批注…' : annotations.state.dirty ? '批注有未保存修改' : '草稿备份已保留' }}<button v-if="annotations.state.dirty && !annotations.state.error" @click="annotations.flush">立即保存</button><button v-if="annotations.state.hasBackup" @click="annotations.exportDraft">导出保留草稿</button></div>
     <div v-if="annotations?.state.error" class="reader-notice annotation-error" role="alert">{{ annotations.state.error }}<button v-if="annotations.state.phase!=='conflict'" @click="annotations.retry">重试保存批注</button><button @click="annotations.exportDraft">导出批注草稿</button><button @click="reloadAnnotations">载入服务端批注并保留草稿备份</button><button @click="retainDraftAndReturn">保留批注草稿并返回文献库</button></div>
     <div v-if="notice" class="reader-notice" role="status">{{ notice }}<button aria-label="关闭提示" @click="notice = ''">×</button></div>
@@ -533,14 +579,14 @@ onBeforeUnmount(() => {
         <div v-if="loading" class="reader-status" role="status"><span class="reader-spinner" /><h1>正在加载 PDF</h1><p>正在读取受保护的文献内容…</p></div>
         <div v-else-if="failure" class="reader-status" role="alert"><Document /><h1>无法打开文献</h1><p>{{ failure }}</p><p v-if="progress?.status.dirty">本地未同步阅读设置已保留，恢复文献后可处理。</p><div><el-button @click="fullFallback = false; load()">重试加载</el-button><el-button @click="router.push('/library')">返回文献库</el-button></div></div>
         <div v-else-if="pdf && viewport" class="pdf-pages" :class="mode" :key="String(route.params.documentId)">
-          <PdfPage v-for="number in pages" :key="`${String(route.params.documentId)}-${mode}-${number}`" :pdf="pdf" :page-number="number" :root="viewport" :scale="scale" :size="sizes[number - 1]!" :matches="matchesByPage.get(number) || []" :selected="selectedMatch" :annotations="annotations?.state.items || []" :annotation-editor="editor?.type==='freeText' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" :editing-active="!!editor" :selected-annotation="selectedAnnotation" :annotation-tool="group==='批注' ? annotationTool : ''" :annotation-enabled="group==='批注'" @annotation-select="selectAnnotation" @annotation-place="placeAnnotation" @annotation-move="moveAnnotation" @annotation-edit="item => openEditor(item,false)" @annotation-draft="updateEditor" @annotation-save="saveEditor" @annotation-cancel="cancelEditor" @ready="pageReady" @failure="fail" />
+          <PdfPage v-for="number in pages" :key="`${String(route.params.documentId)}-${mode}-${number}`" :pdf="pdf" :document-id="String(route.params.documentId)" :drawing-color="annotationColor" :drawing-width="drawingWidth" :drawing-opacity="drawingOpacity" :placement="placement" :page-number="number" :root="viewport" :scale="scale" :size="sizes[number - 1]!" :matches="matchesByPage.get(number) || []" :selected="selectedMatch" :annotations="annotations?.state.items || []" :annotation-editor="editor && (editor.type==='freeText' || drawingTypes.includes(editor.type)) ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" :editing-active="!!editor" :selected-annotation="selectedAnnotation" :annotation-tool="group!=='阅读' ? annotationTool : ''" :annotation-enabled="group!=='阅读'" :annotation-group="group" @annotation-draw="drawingCreated" @annotation-warning="notice=$event" @annotation-replace-asset="pickAsset(editor?.type==='signature' ? 'signature' : 'image')" @annotation-select="selectAnnotation" @annotation-place="placeAnnotation" @annotation-move="moveAnnotation" @annotation-edit="item => openEditor(item,false)" @annotation-draft="updateEditor" @annotation-save="saveEditor" @annotation-cancel="cancelEditor" @ready="pageReady" @failure="fail" />
         </div>
       </div>
       </div>
       <ReaderPanel :open="rightOpen" side="right" :label="rightPanel" :fixed-content="rightPanel === '批注列表'" :non-modal="rightPanel==='批注列表'" @close="closeRight"><PdfSearch v-if="pdf" v-show="rightPanel === '搜索'" :key="String(route.params.documentId)" :pdf="pdf" :selected="selectedMatch" @matches="matches = $event; selectedMatch = ''" @navigate="navigateMatch" /><AnnotationList v-if="annotations" v-show="rightPanel === '批注列表'" :items="annotations.state.items" :editor="editor?.type==='comment' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" @draft="updateEditor" @save="saveEditor" @cancel="cancelEditor" :has-backup="annotations.state.hasBackup" :has-pending="annotations.state.dirty && !annotations.state.error" @save-pending="annotations.flush" @export-backup="annotations.exportDraft" :document-id="String(route.params.documentId)" :selected="selectedAnnotation" @select="navigateAnnotation" @edit="openEditor" @remove="removeAnnotation" /></ReaderPanel>
     </div>
     <dialog ref="editorDialog" class="annotation-editor" aria-labelledby="annotation-editor-title" @cancel.prevent="cancelEditor"><header><strong id="annotation-editor-title">{{ editorNew ? '创建批注' : '编辑批注' }}</strong></header>
-      <form v-if="editor && !['comment','freeText'].includes(editor.type)" @submit.prevent="saveEditor"><p>{{ annotationLabels[editor.type] }} · 第 {{ editor.pageNumber }} 页</p><label v-if="['comment','freeText'].includes(editor.type)">正文<textarea v-model="editor.content" aria-label="批注正文" maxlength="20000" rows="4" autofocus required /></label><p v-else class="annotation-editor-quote">{{ editor.selectedText }}</p><div class="annotation-editor-colors" role="group" aria-label="批注颜色选择"><span>颜色</span><button v-for="color in annotationColors" :key="color" type="button" class="reader-color" :style="{ '--swatch': color }" :aria-label="`编辑批注颜色 ${color}`" :aria-pressed="editor.color.toUpperCase()===color" :title="color" @click="editor.color=color" /><label>自定义<input v-model="editor.color" aria-label="编辑批注颜色" type="color"></label></div><label>透明度<input v-model.number="editor.style.opacity" aria-label="批注透明度" type="number" min="0.05" max="1" step="0.05" required></label><label v-if="editor.type==='freeText'">字号 (pt)<input v-model.number="editor.style.fontSize" aria-label="批注字号" type="number" min="6" max="144" required></label><label v-if="['underline','squiggly','strikeout'].includes(editor.type)">线宽 (pt)<input v-model.number="editor.style.lineWidth" aria-label="批注线宽" type="number" min="0.25" max="20" step="0.25" required></label><div class="annotation-editor-actions"><el-button @click="cancelEditor">取消</el-button><el-button type="primary" native-type="submit">保存批注</el-button></div></form>
+      <form v-if="editor && !['comment','freeText',...drawingTypes].includes(editor.type)" @submit.prevent="saveEditor"><p>{{ annotationLabels[editor.type] }} · 第 {{ editor.pageNumber }} 页</p><label v-if="['comment','freeText'].includes(editor.type)">正文<textarea v-model="editor.content" aria-label="批注正文" maxlength="20000" rows="4" autofocus required /></label><p v-else class="annotation-editor-quote">{{ editor.selectedText }}</p><div class="annotation-editor-colors" role="group" aria-label="批注颜色选择"><span>颜色</span><button v-for="color in annotationColors" :key="color" type="button" class="reader-color" :style="{ '--swatch': color }" :aria-label="`编辑批注颜色 ${color}`" :aria-pressed="editor.color.toUpperCase()===color" :title="color" @click="editor.color=color" /><label>自定义<input v-model="editor.color" aria-label="编辑批注颜色" type="color"></label></div><label>透明度<input v-model.number="editor.style.opacity" aria-label="批注透明度" type="number" min="0.05" max="1" step="0.05" required></label><label v-if="editor.type==='freeText'">字号 (pt)<input v-model.number="editor.style.fontSize" aria-label="批注字号" type="number" min="6" max="144" required></label><label v-if="['underline','squiggly','strikeout'].includes(editor.type)">线宽 (pt)<input v-model.number="editor.style.lineWidth" aria-label="批注线宽" type="number" min="0.25" max="20" step="0.25" required></label><div class="annotation-editor-actions"><el-button @click="cancelEditor">取消</el-button><el-button type="primary" native-type="submit">保存批注</el-button></div></form>
     </dialog>
   </main>
 </template>

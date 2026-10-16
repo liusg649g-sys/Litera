@@ -1,8 +1,23 @@
 # 统一 API 与跨模块契约 v1（Change 01、02 A1/A2/B1 已实现，后续规划）
 
-## P3-B1 实现约束（2026-10-15）
+## P3-B2 实现补充（2026-10-16）
 
-生产者：backend/app/annotations.py；消费者：frontend/src/reader/annotations.ts、PdfAnnotations.vue、AnnotationList.vue。保留后文完整13类目标契约，实际B1只开放六类，不开放资产/导出。
+本节覆盖后文B1历史的“仅六类/资产未实现”限制。当前API开放全部13类，生产者 `backend/app/annotations.py`、`reader_assets.py`，消费者 `reader/annotations.ts`、`assets.ts`、`PdfDrawingObjects.vue`、`ReaderAssetManager.vue`、`AnnotationList.vue`。带批注导出仍未实现。
+
+- `geometry.kind='points'`用于ink，`{pageNumber,points:[{x,y}]}`，2–10000个页内归一化点且至少两个不同点；其余四种新增box对象和三插入使用box。circle后端按真实CropBox宽高验证等比；image/signature按资产真实宽高比验证，比例容差0.5%。仅watermark允许box.rotation为−90至90，其余box仍为0。watermark正文非空；零角度保留原B1整数0表示，避免旧commandId收据指纹改变。
+- image/signature必须有本人本篇有效assetId，其余类型assetId=null。PATCH增加assetId（仅图片/签名能非空），用于替换失效图片；完整几何、比例和归属重新校验。旧资产最后活动引用消失后延迟24小时回收；新资产关联、批注、revision和收据同事务提交。B1原有字段/版本/幂等/草稿规则沿用。
+- POST `/documents/{id}/reader-assets`：只接受一个multipart `file`，PNG/JPEG完整解码并规范化；201 `{assetId,mimeType,width,height,sizeBytes,status,attempts,errorCode}`。5MiB输入及输出、20M像素、单边16384、本篇未清理资产50MiB；超限413/422，格式或解码失败415。缺会话401，Origin/CSRF403，错文献/用户404。
+- GET `/documents/{id}/reader-assets`：`{items:ReaderAssetDTO[]}`，仅本人本篇未清理资产，供失败清理追踪。GET `/{assetId}/content`受保护二进制，不暴露路径，nosniff/no-store；错关联404，已知失效/过期422 `ASSET_UNAVAILABLE`。
+- DELETE `/{assetId}`：未引用临时资产成功204；文件清理失败202 ReaderAssetDTO（含failed/errorCode/attempts），重复DELETE可重试，已清理幂等204；活动引用或24小时撤销保留期409。到期扫描与永久删除也可重试，不将202当成功。
+- 启动及每60秒扫描：未引用上传1小时、最后活动引用删除/替换后24小时；永久删除接原cleanup_jobs。超出租约的恢复明确422并保留本地草稿。视觉签名无密码学签署，水印仅当前页。
+- 图片确定被 `ASSET_UNAVAILABLE` 拒绝后可在原编辑栏更换图片，再创建新命令；网络未知结果仍核对原收据，不变更原prepared命令。现有409人工核对/导出备份策略保留。
+
+实现/实际测试及Windows升级步骤见 [P3-B2记录](../development/p3-b2.md)。真实MySQL专项未运行，用户实际UI验收待进行。
+
+
+## P3-B1 实现约束（历史基础，2026-10-15）
+
+历史B1生产者：backend/app/annotations.py；消费者：frontend/src/reader/annotations.ts、PdfAnnotations.vue、AnnotationList.vue。保留后文完整13类目标契约，实际B1只开放六类，不开放资产/导出。
 
 - geometry=text的positions必须与position完全相同，非空逐页rects/textQuote且selectedText非空；起始pageNumber必须一致，服务端用原PDF真实页数验证全部子页。四种文本标记只用text；comment用text或anchor；freeText只用box（rotation=0），坐标始终是未旋转CropBox左上归一化值，不能越界或含NaN/Infinity。
 - `color`必为#RRGGBB（默认#F5D547），透明度独立；style只接受stroke/fill、opacity(0,1]、lineWidth 0.25–20pt、fontSize 6–144pt，默认1/1/14。PATCH changes允许color/content/style/geometry/zIndex，style子字段合并，type/id/文本锚点不可修改，非文本几何可在原页移动/改框。comment/freeText正文非空，纯文本由Vue按文本输出，不执行HTML；单字段最多20k字符、单对象序列化最多1MiB、单篇最多10k活动对象，不截断。
@@ -78,7 +93,7 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 
 上传 DTO：title 初值由文件名（去扩展名）产生，authors=[]，未知元数据=null/[]，parseStatus=not_requested。重复错误 details 仅可包含本人 existingDocumentId、inTrash；若在回收站提示恢复，不悄悄重建。阶段 01 不调用任何解析或 AI。
 
-## Change 02：阅读、对象与导出（目标契约，尚未实现）
+## Change 02：阅读、对象与导出（B1/B2已实现，导出待C1）
 
 2026-10-15以[02设计](../../openspec/changes/02-pdf-reader/design.md)为本模块细节来源。01的当前实现/历史段保留；以下不表示API已提供。前缀仍为/api/v1，复用会话、Origin/CSRF、错误包络与owner/有效文献过滤。
 
@@ -104,7 +119,7 @@ MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；
 
 对象/资产限额、坐标、幂等/收据保留、清理和导出资源预算见02设计。软删保留但普通访问404、恢复同ID，永久清理接原cleanup_jobs且失败可重试。导出仅已保存一致快照，不混合修订；“第三方可见”与“第三方可编辑”分开验收，不承诺全类型原生可编辑。
 
-上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；reader-assets 和导出仍不可调用。B1输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
+上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；B2现已开放reader-assets与七种新对象，导出仍不可调用。B1当时输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
 
 ## Change 03–06：预期接口，全部待实现
 
@@ -158,7 +173,7 @@ type AnnotationType = 'highlight'|'underline'|'squiggly'|'strikeout'|'comment'
 type AnnotationGeometry =
   | { kind:'text'; positions:SelectionPosition[] }
   | { kind:'box'; pageNumber:number; rect:NormalizedRect; rotation:number }
-  | { kind:'path'; pageNumber:number; points:{x:number;y:number}[] }
+  | { kind:'points'; pageNumber:number; points:{x:number;y:number}[] }
   | { kind:'anchor'; pageNumber:number; x:number; y:number };
 interface AnnotationDTO {
   id:string; documentId:string; type:AnnotationType; schemaVersion:1;

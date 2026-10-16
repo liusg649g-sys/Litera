@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import Field, TypeAdapter, ValidationError, model_validator
+from pydantic import Field, TypeAdapter, ValidationError, field_validator, model_validator
 from pypdf import PdfReader
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -63,7 +63,14 @@ class BoxGeometry(InputModel):
     kind: Literal["box"]
     pageNumber: Page
     rect: Rect
-    rotation: Literal[0] = 0
+    rotation: Literal[0] | Annotated[float, Field(strict=True, ge=-90, le=90, allow_inf_nan=False)] = 0
+
+    @field_validator("rotation")
+    @classmethod
+    def legacy_zero(cls, value):
+        # B1 receipts fingerprint integer zero. Preserve that representation
+        # when widening the field for watermark angles, including 0.0 input.
+        return 0 if value == 0 else value
 
 
 class AnchorGeometry(InputModel):
@@ -72,6 +79,15 @@ class AnchorGeometry(InputModel):
     x: Number
     y: Number
 
+
+class InkPoint(InputModel):
+    x: Number
+    y: Number
+
+class PointsGeometry(InputModel):
+    kind: Literal["points"]
+    pageNumber: Page
+    points: list[InkPoint] = Field(min_length=2, max_length=10000)
 
 class Style(InputModel):
     stroke: Color | None = None
@@ -83,13 +99,13 @@ class Style(InputModel):
 
 class AnnotationInput(InputModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1, max_length=36)
-    type: Literal["highlight", "underline", "squiggly", "strikeout", "comment", "freeText"]
+    type: Literal["highlight", "underline", "squiggly", "strikeout", "comment", "freeText", "ink", "rectangle", "circle", "ellipse", "signature", "watermark", "image"]
     schemaVersion: Literal[1] = 1
     pageNumber: Page
     position: list[Position] | None = None
-    geometry: Annotated[TextGeometry | BoxGeometry | AnchorGeometry, Field(discriminator="kind")]
+    geometry: Annotated[TextGeometry | BoxGeometry | AnchorGeometry | PointsGeometry, Field(discriminator="kind")]
     style: Style = Field(default_factory=Style)
-    assetId: None = None
+    assetId: Annotated[str, Field(min_length=1, max_length=36)] | None = None
     selectedText: str | None = Field(default=None, max_length=20000)
     content: str | None = Field(default=None, max_length=20000)
     color: Color = "#F5D547"
@@ -98,6 +114,17 @@ class AnnotationInput(InputModel):
     @model_validator(mode="after")
     def coherent(self):
         text = self.geometry.kind == "text"
+        if self.type in ("rectangle", "circle", "ellipse", "signature", "watermark", "image") and self.geometry.kind != "box":
+            raise ValueError("此对象需要矩形几何")
+        if self.type == "ink" and self.geometry.kind != "points":
+            raise ValueError("手绘需要笔迹点列")
+        if self.geometry.kind == "points":
+            if self.type != "ink" or len({(p.x, p.y) for p in self.geometry.points}) < 2:
+                raise ValueError("无效笔迹")
+        if self.geometry.kind == "box" and self.type != "watermark" and self.geometry.rotation != 0:
+            raise ValueError("仅水印允许对象角度")
+        if (self.assetId is not None) != (self.type in ("image", "signature")):
+            raise ValueError("图片与签名必须关联本篇资产")
         if self.type in ("highlight", "underline", "squiggly", "strikeout") and not text:
             raise ValueError("文本标记需要真实文本锚点")
         if self.type == "freeText" and self.geometry.kind != "box":
@@ -111,7 +138,7 @@ class AnnotationInput(InputModel):
                 raise ValueError("起始页不一致")
         elif self.position is not None or self.pageNumber != self.geometry.pageNumber:
             raise ValueError("几何页码不一致")
-        if self.type in ("comment", "freeText") and not (self.content or "").strip():
+        if self.type in ("comment", "freeText", "watermark") and not (self.content or "").strip():
             raise ValueError("请输入正文")
         if len(self.model_dump_json().encode()) > 1_048_576:
             raise ValueError("单个标注超出1MiB")
@@ -229,7 +256,7 @@ def create_annotation_router(current_session, require_csrf):
                 if row.version != payload.version:
                     reject(409, "ANNOTATION_VERSION_CONFLICT", "标注已更新")
                 if operation == "edit":
-                    allowed = {"color", "content", "style", "geometry", "zIndex"}
+                    allowed = {"color", "content", "style", "geometry", "zIndex", "assetId"}
                     if set(payload.changes) - allowed or ("geometry" in payload.changes and row.geometry["kind"] == "text"):
                         reject(422, "INVALID_CHANGES", "类型和文本锚点不可修改")
                     try:
@@ -242,6 +269,21 @@ def create_annotation_router(current_session, require_csrf):
                 else:
                     data = None
         if data:
+            if data.assetId:
+                from .reader_assets import validate_asset
+                asset = validate_asset(db, owner, id, data.assetId)
+                asset.expires_at = None
+            if data.type in ("circle", "image", "signature"):
+                try:
+                    physical_page = PdfReader(storage_path(file.storage_key)).pages[data.pageNumber-1]
+                    crop = physical_page.cropbox
+                    r = data.geometry.rect
+                    ratio = r.width * float(crop.width) / (r.height * float(crop.height))
+                    expected = 1 if data.type == "circle" else asset.width / asset.height
+                    if abs(ratio / expected - 1) > .005:
+                        reject(422, "INVALID_ASPECT", "圆形与图片须保持物理宽高比")
+                except IndexError:
+                    reject(422, "INVALID_PAGE", "标注页码超出PDF真实页数")
             if doc.page_count is None:
                 try:
                     reader = PdfReader(storage_path(file.storage_key)); doc.page_count = len(reader.pages)
@@ -252,11 +294,25 @@ def create_annotation_router(current_session, require_csrf):
                 reject(422, "INVALID_PAGE", "标注页码超出PDF真实页数")
             if operation in ("create", "restore") and db.scalar(select(func.count()).select_from(Annotation).where(Annotation.document_id == id, Annotation.deleted_at.is_(None))) >= 10000:
                 reject(422, "ANNOTATION_LIMIT", "本篇标注已达10000个")
+            if row.asset_id and row.asset_id != data.assetId:
+                from .models import ReaderAsset
+                previous_asset = db.get(ReaderAsset, row.asset_id)
+                other = db.scalar(select(Annotation.id).where(Annotation.asset_id == row.asset_id,
+                    Annotation.id != row.id, Annotation.deleted_at.is_(None)))
+                if previous_asset and not other:
+                    previous_asset.expires_at = now + timedelta(hours=24)
             for key, value in data.model_dump().items():
                 if key != "id": setattr(row, columns.get(key, key), value)
             row.deleted_at = None
         else:
             row.deleted_at = now
+            if row.asset_id:
+                from .models import ReaderAsset
+                asset = db.get(ReaderAsset, row.asset_id)
+                other = db.scalar(select(Annotation.id).where(Annotation.asset_id == row.asset_id,
+                    Annotation.id != row.id, Annotation.deleted_at.is_(None)))
+                if asset and not other:
+                    asset.expires_at = now + timedelta(hours=24)
         row.version += 1; row.updated_at = now
         db.add(row)
         state.annotation_revision += 1

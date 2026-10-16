@@ -1,5 +1,14 @@
 # 数据模型说明（已实现阶段与后续逻辑模型）
 
+## P3-B2 增量实现（2026-10-16）
+
+`0006_reader_assets`接0005，只新增reader_assets及owner/document/status索引，不重建或清空旧表。字段：id、owner_id（users外键）、document_id（documents外键）、storage_key（唯一、私有）、sha256（规范化字节哈希）、mime_type、width/height、size_bytes、status、attempts、error_code、created_at、expires_at。时间沿用MySQL DATETIME(6)/SQLite DateTime。status为uploading/ready/cleaning/failed/deleted；活动引用expires_at=null，临时上传租约1小时，最后活动对象删除或替换后租约24小时。删除成功保留台账且排除容量计算；文献永久删除最终移除资产行。
+
+annotations仍复用0005的JSON/asset_id字段，应用层校验asset owner/document及有效状态，不改原业务表。type现开放13类；ink使用points，形状与插入使用box，水印允许对象角度；circle/image/signature校验物理比例。新对象与旧六类共用独立集合CAS、对象version、命令收据和墓碑。上传先台账后文件，资产清理先持久化intent再删文件；失败可查询重试。软删保留，永久清理纳入原cleanup_jobs。
+
+生产者models.py/reader_assets.py/annotations.py，消费者阅读器assets.ts/annotations.ts及对应页面层。真实MySQL仅离线DDL，自动迁移保留旧数据的测试为隔离SQLite，不等同业务MySQL升级验收。下文B1/规划历史中的“尚无资产/仅六类”由本节覆盖。详见 [B2记录](../development/p3-b2.md)。
+
+
 ## P2-B当前实际数据（2026-10-14）
 
 0003_library增量创建folders/tags/document_tags/reading_progress/cleanup_jobs，documents只新增nullable folder_id、last_read_at和purge_job_id；不删除既有数据或重建documents。外键文件夹SET NULL、标签关联/进度CASCADE，分类删除API主动递增受影响文献version。名称保存name和NFKC+casefold的normalized_name，UNIQUE(owner_id,normalized_name)保证用户内重复检查；每个分类/关联写入复验owner。
@@ -103,7 +112,7 @@ document_reader_state以document_id为主键、owner索引，annotation_revision
 
 annotation_command_receipts以(document_id,command_id)复合主键、owner索引、expires_at索引，保存请求指纹及完整MutationResult，24小时有效；同ID不同请求409，重复相同请求返回原结果。过期行在该文献后续成功写入时清除，过期查询404且客户端不得盲重放。对象、修订号、收据同事务提交；故障注入验证没有部分结果。软删只屏蔽访问，恢复原ID保留对象；原cleanup_jobs在同一数据库清理事务显式删除收据/对象/状态，失败仍保持可追踪并支持幂等重试。downgrade主动拒绝删除标注，应用回退应保留数据。
 
-字段规则及限额见[API契约](api-contracts.md)和[B1开发记录](../development/p3-b1.md)。B2复用这三张表并增量扩展类型/资产校验，不提前建立reader_assets或03–06表。
+字段规则及限额见[API契约](api-contracts.md)和[B1开发记录](../development/p3-b1.md)。B2复用这三张表并增量扩展类型/资产校验，B2现已新增reader_assets，03–06表仍未建立。
 
 ### B1选区JSON兼容增强（2026-10-16）
 
