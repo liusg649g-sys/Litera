@@ -6,9 +6,9 @@
 
 ## 当前进度
 
-Change 01及Change 02 P3-A1/A2/B1已通过用户实际功能/UI验收。P3-B2本轮实现手绘、矩形/圆形/椭圆、视觉签名、当前页文字水印、PNG/JPEG插入及私有资产管理，连同原六类共13类。新对象沿用页面实时预览、就近编辑、✓保存/×取消、CAS/commandId串行保存及补偿撤销重做。独立荧光笔已取消，不提供手动旋转PDF页面。
+Change 01及Change 02 P3-A1/A2/B1/B2已通过用户实际功能/UI验收（B2于2026-10-16确认整体验收完成，Change 02当前24/36）。P3-B2本轮实现手绘、矩形/圆形/椭圆、视觉签名、当前页文字水印、PNG/JPEG插入及私有资产管理，连同原六类共13类。新对象沿用页面实时预览、就近编辑、✓保存/×取消、CAS/commandId串行保存及补偿撤销重做。独立荧光笔已取消，不提供手动旋转PDF页面。
 
-B2开发与自动化结果、真实MySQL边界和逐项手动验收见 [P3-B2记录](docs/development/p3-b2.md)；用户实际功能/UI验收待进行，tasks 4.6保留该门槛。带批注导出/C1、C2和03–06尚未实施。历史记录见 [B1](docs/development/p3-b1.md) 及 [HANDOFF](HANDOFF.md)。
+B2开发与自动化结果、真实MySQL边界和逐项手动验收见 [P3-B2记录](docs/development/p3-b2.md)；用户已明确确认整体验收通过，tasks 4.1–4.6全部完成；下一阶段P3-C1（5.1–5.6）尚未启动。带批注导出/C1、C2和03–06尚未实施。历史记录见 [B1](docs/development/p3-b1.md) 及 [HANDOFF](HANDOFF.md)。
 
 新增迁移0006_reader_assets与Pillow依赖，本次需同时重建API及nginx，API启动自动增量升级；保留已有账号、文献ID/题录、原PDF、批注和进度。私有资产沿用API专用PDF卷。已有.env无需重新初始化，禁止用down -v普通重启。本轮未运行Docker、业务数据库迁移或Git提交/推送/归档。
 
@@ -135,7 +135,7 @@ npm run dev -- --port 5173 --strictPort
 - [设计决策](docs/design/decisions.md)
 - [规划校验记录](docs/design/validation.md)
 
-Change 01及02 P3-A1/A2/B1均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0006_reader_assets，保留账号、文献、原PDF及独立进度。P3-B2已开发，等待用户实际功能/UI验收；不自动进入C1/C2或提交、推送、归档。管理员、跨用户共享等扩展另立change。
+Change 01及02 P3-A1/A2/B1/B2均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0006_reader_assets，保留账号、文献、原PDF及独立进度。P3-B2已开发并通过用户实际功能/UI验收，当前24/36；不自动进入C1/C2或提交、推送、归档。管理员、跨用户共享等扩展另立change。
 
 ## P1 页面优化
 
