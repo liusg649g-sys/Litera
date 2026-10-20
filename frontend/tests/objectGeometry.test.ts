@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {dragRect,resizeObject,transformGeometry,bounds} from '../src/reader/objectGeometry'
+import {dragRect,resizeObject,transformGeometry,bounds,rotateBoxPoint,resizeRotatedObject} from '../src/reader/objectGeometry'
 describe('B2 physical object geometry',()=>{
   it('creates circles in all drag directions on different page sizes',()=>{
     for(const [w,h] of [[612,792],[700,792],[580,740],[200,300]])for(const dx of [-.2,.2])for(const dy of [-.3,.3]){
@@ -21,5 +21,26 @@ describe('B2 physical object geometry',()=>{
     const ink={kind:'points' as const,pageNumber:1,points:[{x:.1,y:.2},{x:.2,y:.3},{x:.4,y:.5}]}
     const moved=transformGeometry(ink,{x:.2,y:.3,width:.6,height:.3})
     expect(bounds(moved)).toEqual({x:.2,y:.3,width:.6000000000000001,height:.3});expect(ink.points[0]).toEqual({x:.1,y:.2})
+  })
+})
+
+
+describe('inserted object rotation in physical page space',()=>{
+  it('rotates by physical degrees on rectangular pages and round trips',()=>{
+    const r={x:.3,y:.3,width:.2,height:.1},p={x:.5,y:.35}
+    for(const ratio of [612/792,580/740,2])for(const angle of [-90,-37,0,31,90]){
+      const q=rotateBoxPoint(p,r,angle,ratio),back=rotateBoxPoint(q,r,-angle,ratio)
+      expect(back.x).toBeCloseTo(p.x,10);expect(back.y).toBeCloseTo(p.y,10)
+      expect(Math.hypot((q.x-.4)*ratio,q.y-.35)).toBeCloseTo(.1*ratio,10)
+    }
+  })
+  it('resizes a rotated image while keeping its opposite visual corner and aspect',()=>{
+    const r={x:.3,y:.3,width:.2,height:.1}
+    for(const handle of ['nw','ne','se','sw'] as const)for(const angle of [-90,-37,0,31,90])for(const ratio of [612/792,2]){
+      const corner=(box:typeof r)=>({x:handle.includes('w')?box.x+box.width:box.x,y:handle.includes('n')?box.y+box.height:box.y})
+      const before=rotateBoxPoint(corner(r),r,angle,ratio),next=resizeRotatedObject(r,.01,.02,handle,angle,ratio),after=rotateBoxPoint(corner(next),next,angle,ratio)
+      expect(next.width/next.height).toBeCloseTo(2,10)
+      expect(after.x).toBeCloseTo(before.x,10);expect(after.y).toBeCloseTo(before.y,10)
+    }
   })
 })

@@ -37,3 +37,15 @@ export function dragRect(a:{x:number;y:number},b:{x:number;y:number},ratio?:numb
 
 export const liveInk=shallowRef<{documentId:string;segments:Extract<Geometry,{kind:'points'}>[]} | null>(null)
 export const drawingViewports=new WeakMap<PDFDocumentProxy,Map<number,CoordinateViewport>>()
+
+// Rotate in physical page space, then convert back to normalized coordinates.
+export function rotateBoxPoint(p:{x:number;y:number},r:NormalizedRect,angle:number,pageRatio:number){
+  const cx=r.x+r.width/2,cy=r.y+r.height/2,theta=angle*Math.PI/180,c=Math.cos(theta),s=Math.sin(theta)
+  return {x:cx+c*(p.x-cx)-s*(p.y-cy)/pageRatio,y:cy+s*(p.x-cx)*pageRatio+c*(p.y-cy)}
+}
+export function resizeRotatedObject(r:NormalizedRect,dx:number,dy:number,handle:BoxHandle,angle:number,pageRatio:number){
+  const theta=angle*Math.PI/180,c=Math.cos(theta),s=Math.sin(theta)
+  const next=resizeObject(r,c*dx+s*dy/pageRatio,-s*dx*pageRatio+c*dy,handle,r.width/r.height)
+  const center=rotateBoxPoint({x:next.x+next.width/2,y:next.y+next.height/2},r,angle,pageRatio)
+  return {...next,x:Math.max(0,Math.min(1-next.width,center.x-next.width/2)),y:Math.max(0,Math.min(1-next.height,center.y-next.height/2))}
+}

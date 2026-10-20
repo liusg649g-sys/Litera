@@ -63,3 +63,38 @@ test('mobile layout and service failure are explicit', async ({ page }) => {
   await page.getByRole('button', { name: '登录', exact: true }).click()
   await expect(page.getByText('无法连接服务，请检查网络后重试')).toBeVisible()
 })
+
+test('profile password change validates inline, cancels secrets, handles failures and revokes other devices', async ({page,browser,baseURL},info) => {
+  const origin = new URL(baseURL!).origin
+  const email = `password-${Date.now()}@example.com`
+  expect((await page.request.post('/api/v1/auth/register',{headers:{Origin:origin},data:{email,password:'Litera-test-123',displayName:'账号安全测试'}})).status()).toBe(201)
+  await page.goto('/login');await page.getByLabel('邮箱',{exact:true}).fill(email);await page.getByLabel('密码',{exact:true}).fill('Litera-test-123');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page).toHaveURL('/library')
+  const account = (await(await page.request.get('/api/v1/auth/session')).json()).user
+  const device = await browser.newContext({baseURL:origin})
+  try {
+    expect((await device.request.post('/api/v1/auth/login',{headers:{Origin:origin},data:{email:account.email,password:'Litera-test-123'}})).status()).toBe(200)
+    await page.getByRole('link',{name:'个人资料',exact:true}).click()
+    await expect(page.getByLabel('当前密码',{exact:true})).toHaveCount(0)
+    await page.getByRole('button',{name:'修改密码',exact:true}).click()
+    const current=page.getByLabel('当前密码',{exact:true}), next=page.getByLabel('新密码',{exact:true}), confirm=page.getByLabel('确认新密码',{exact:true})
+    await expect(current).toBeFocused();await expect(page.locator('.security-card .el-form-item__error')).toHaveCount(0)
+    await current.fill('draft');await next.fill('draft-password');await confirm.fill('draft-password')
+    await page.getByRole('link',{name:'返回文献库',exact:true}).click();await expect(page).toHaveURL('/profile')
+    await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'修改密码',exact:true}).click();await expect(current).toHaveValue('');await expect(next).toHaveValue('')
+    await current.fill('Litera-test-123');await next.fill('short');await confirm.fill('different');await page.getByRole('button',{name:'保存新密码',exact:true}).click()
+    await expect(page.getByText('密码长度为 8–128 个字符',{exact:true})).toBeVisible();await expect(page.getByText('两次密码输入不一致',{exact:true})).toBeVisible()
+    await next.fill(' 新密码-Litera-456🙂 ');await confirm.fill(' 新密码-Litera-456🙂 ');await current.fill('wrong-password')
+    await page.getByRole('button',{name:'保存新密码',exact:true}).click();await expect(page.locator('.security-card .el-alert')).toContainText('当前密码不正确');await expect(page).toHaveURL('/profile')
+    await current.fill('Litera-test-123');await page.getByRole('heading',{name:'账号安全',exact:true}).click();await expect(page.locator('.security-card .el-form-item.is-error')).toHaveCount(0)
+    await page.screenshot({path:info.outputPath('password-desktop.png'),animations:'disabled',fullPage:true})
+    await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    await page.screenshot({path:info.outputPath('password-mobile.png'),animations:'disabled',fullPage:true});await expect(page.locator('dialog:modal')).toHaveCount(0)
+    await page.route('**/api/v1/auth/password',route=>route.abort())
+    await page.getByRole('button',{name:'保存新密码',exact:true}).click();await expect(page.locator('.security-card .el-alert')).toContainText('请求结果尚未确认');await expect(next).toHaveValue(' 新密码-Litera-456🙂 ')
+    await page.unroute('**/api/v1/auth/password');await page.getByRole('button',{name:'保存新密码',exact:true}).click()
+    await expect(page).toHaveURL(/\/login\?.*passwordChanged=1/);await expect(page.getByText('密码已修改，请重新登录',{exact:true})).toBeVisible()
+    expect((await device.request.get('/api/v1/auth/session')).status()).toBe(401)
+    expect((await page.request.post('/api/v1/auth/login',{headers:{Origin:origin},data:{email:account.email,password:'Litera-test-123'}})).status()).toBe(401)
+    await page.getByLabel('密码',{exact:true}).fill(' 新密码-Litera-456🙂 ');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page).toHaveURL('/library')
+  } finally { await device.close() }
+})

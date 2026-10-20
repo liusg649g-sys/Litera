@@ -9,7 +9,7 @@ describe('library UI boundaries', () => {
   it('uses authenticated stable-id content URLs without exposing storage paths', () => {
     expect(contentUrl('document/id')).toBe('/api/v1/documents/document%2Fid/content')
     expect(contentUrl('document', true)).toBe('/api/v1/documents/document/content?download=true')
-    expect(sizeLabel(50 * 1024 * 1024)).toBe('50.0 MiB')
+    expect(sizeLabel(50 * 1024 * 1024)).toBe('50.0 MB')
     expect(sizeLabel(400)).toBe('400 B')
   })
 })

@@ -6,13 +6,43 @@
 
 ## 当前进度
 
-Change 01及Change 02 P3-A1/A2/B1/B2已通过用户实际功能/UI验收（B2于2026-10-16确认整体验收完成，Change 02当前24/36）。P3-B2本轮实现手绘、矩形/圆形/椭圆、视觉签名、当前页文字水印、PNG/JPEG插入及私有资产管理，连同原六类共13类。新对象沿用页面实时预览、就近编辑、✓保存/×取消、CAS/commandId串行保存及补偿撤销重做。独立荧光笔已取消，不提供手动旋转PDF页面。
+本轮最终实现、各批实际测试、暂缓需求及Windows CMD手动GitHub上传步骤，统一见
+[2026-10-20交付索引](docs/development/2026-10-20-delivery.md)。
 
-B2开发与自动化结果、真实MySQL边界和逐项手动验收见 [P3-B2记录](docs/development/p3-b2.md)；用户已明确确认整体验收通过，tasks 4.1–4.6全部完成；下一阶段P3-C1（5.1–5.6）尚未启动。带批注导出/C1、C2和03–06尚未实施。历史记录见 [B1](docs/development/p3-b1.md) 及 [HANDOFF](HANDOFF.md)。
+- P3-C2：共享标签/批量关闭与草稿保护、每篇阅读及面板状态、ReaderContext/navigation adapter、长文和十标签资源验证。见[P3-C2](docs/development/p3-c2.md)与[公共接口](docs/design/reader-public-api.md)。
+- 账号安全：个人资料页修改密码，成功撤销本人全部会话并重新登录。见[修改密码](docs/development/password-change.md)。
+- 插入对象：水印/签名/图片角度滑块与数值输入同步，范围−90°～90°、1°步进；保存/撤销/导出一致，调角度时属性框固定。签名属性移除更换图片，图片仍保留。见[插入角度](docs/development/insert-rotation.md)。
+- 选区快捷批注：**仅批注模式下选中文字后右键显示，不自动弹出**；上排五工具，下排常用色/自定义色；悬停保持、约50px距离淡出。见[快捷面板](docs/development/selection-quick-toolbar.md)。
+- 移除资产管理/重新读取图片维护入口，后台自动回收与撤销租约保留；上传提示为“本地 PDF · 单篇上限 50.0 MB”，实际逐篇字节限制不变。见[图片入口精简](docs/development/reader-asset-ui.md)。
 
-新增迁移0006_reader_assets与Pillow依赖，本次需同时重建API及nginx，API启动自动增量升级；保留已有账号、文献ID/题录、原PDF、批注和进度。私有资产沿用API专用PDF卷。已有.env无需重新初始化，禁止用down -v普通重启。本轮未运行Docker、业务数据库迁移或Git提交/推送/归档。
+Change 02当前35/36（6.1–6.5完成；6.6文档已交付，最终用户实际功能/UI验收待确认），未正式结束。
+自动生成目录、题录自动识别（Change 05）、文件夹/批量导入暂未实现；03–06未开发。
+不同测试批次和SQLite/真实MySQL边界见交付索引，不把自动化或文档交付当作用户最终验收。
 
-以下命令默认从项目根目录开始；代码块进入frontend/backend时分别在根目录新开终端。数据库和PDF卷须联合备份。既有文献库UI与历史说明见 [P2-B UI](docs/development/p2-b-ui.md)，阅读器基准见 [P3-A2 UI](docs/development/p3-a2-ux.md)。
+包含本会话全部代码的部署需用户手动同时更新API/nginx（密码和旋转均有后端变更）：
+
+```cmd
+docker compose up -d --build --no-deps --wait api nginx
+```
+
+随后Ctrl+F5；若相关API已经部署、仅更新后续前端交互，可只更新nginx。仅文档变化无需部署。
+无新增迁移，head仍0006_reader_assets；不改原始PDF，不重建数据库或删除既有数据卷，不自动commit/push/sync/archive。
+
+以下C1及A/B内容为历史已验收记录，与本轮分批自动化证据分开。
+
+Change 01及Change 02 A1/A2/B1/B2/C1均已通过用户实际功能/UI验收，C1交付时为30/36；P3-C1已交付，支持全部13类对象的带批注PDF导出，保留原始PDF字节。导出以第三方可靠可见为目标，不增加附录页，注释正文写入原生PDF批注供查看，不承诺第三方原生可编辑。独立荧光笔已取消。
+
+最新反馈修复：[注释双模式气泡与无附录导出](docs/development/p3-c1-comment-popup.md)。悬浮显示/移走消失，单击固定/外部点击关闭，淡入淡出各100ms；旧导出文件需重新导出。
+
+阅读器新增[原生全屏模式](docs/development/reader-fullscreen.md)：批注列表与下载之间的按钮切换全屏，只将Litera品牌栏以200ms动画收起/展开；保留文献管理/文献标签，阅读和编辑工具栏正常占位，退出保留侧栏和草稿。本轮实际UI已获用户整体验收；浏览器原生Esc与任务栏表现仍由目标环境决定。
+
+C1先完成技术验证/ADR，再实现expectedAnnotationRevision一致快照、受保护同步导出、隔离进程与资源清理。阅读器统一“下载PDF”下拉入口，分别提供“导出带批注PDF”和“下载原始PDF”，带批注文件名使用“原文件名_带批注.pdf”，未保存草稿需明确处理。窄屏批注侧栏也可导出，不丢失编辑草稿。
+
+用户明确确认5.5在Google Chrome和Microsoft Edge测试，导出内容均正常显示；按该次确认范围完成5.1–5.6。Adobe Acrobat Reader未测试，浏览器具体版本未提供，不推定通过；03–06未实施，C2本轮状态见上文。真实MySQL专项不以SQLite代替。实现、13类矩阵、真实测试批次与手动验收见 [P3-C1记录](docs/development/p3-c1.md)，选型见 [ADR](docs/design/adr-0007-annotated-pdf-export.md)，历史B1/B2见 [HANDOFF](HANDOFF.md)。
+
+C1新增运行依赖ReportLab/psutil与内置OFL中文字体，无新增迁移，head仍0006_reader_assets。首次部署这些实现需手动同时重建API/nginx并保留已有.env与数据卷；C1历史文档交接本身无需再次部署，包含本轮账号安全/旋转时按本节开头同时更新API/nginx。本轮未运行Docker、业务库迁移或提交/推送/归档。
+
+以下Windows CMD默认从项目根目录开始，原有配置/首次启动方式继续有效。
 
 ## Windows CMD 启动
 
@@ -116,7 +146,7 @@ npm run dev -- --port 5173 --strictPort
 
 ## 技术方案与分工
 
-采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js 6.4.299已用于P3-A1；PyMuPDF、LLM API + RAG仍属于后续规划技术。
+采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js 6.4.299用于阅读；pypdf 6.20.1 + ReportLab 4.4.10用于C1导出。PyMuPDF仅供隔离开发渲染验证，LLM API + RAG属于后续规划。
 
 | 成员 | 负责模块 |
 | --- | --- |
@@ -135,7 +165,7 @@ npm run dev -- --port 5173 --strictPort
 - [设计决策](docs/design/decisions.md)
 - [规划校验记录](docs/design/validation.md)
 
-Change 01及02 P3-A1/A2/B1/B2均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0006_reader_assets，保留账号、文献、原PDF及独立进度。P3-B2已开发并通过用户实际功能/UI验收，当前24/36；不自动进入C1/C2或提交、推送、归档。管理员、跨用户共享等扩展另立change。
+Change 01及02 P3-A1/A2/B1/B2/C1均已通过实际验收；阶段历史分别见[P3-A2记录](docs/development/p3-a2.md)及[P3-B1记录](docs/development/p3-b1.md)。当前迁移链至0006_reader_assets，保留账号、文献、原PDF及独立进度。C2本轮交付等待用户实际功能/UI验收，不自动提交、推送或归档。管理员、跨用户共享等扩展另立change。
 
 ## P1 页面优化
 

@@ -1,0 +1,3 @@
+# Optional development-only independent PDF renderer. Not installed in the API image.
+# PyMuPDF uses AGPL/commercial licensing; do not add it to the production runtime.
+PyMuPDF==1.26.7

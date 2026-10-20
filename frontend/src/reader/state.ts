@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 
 export type ViewMode = 'continuous' | 'single' | 'spread'
 export type ZoomMode = 'custom' | 'fit-width' | 'fit-height'
-export interface ReaderTab { id: string; title: string; page: number; mode: ViewMode; scrollTop: number; zoom: number; zoomMode: ZoomMode }
+export interface ReaderTab { id: string; title: string; page: number; mode: ViewMode; scrollTop: number; zoom: number; zoomMode: ZoomMode; panels?: { leftOpen: boolean; rightOpen: boolean; leftPanel: string; rightPanel: string; leftWidth: number } }
 // Only lightweight session state survives a visit to the library. Never store PDF bytes/DOM.
 export const readerTabs = reactive<ReaderTab[]>([])
 export const annotationListFilters = reactive<Record<string, { type: string; color: string; sort: string }>>({})

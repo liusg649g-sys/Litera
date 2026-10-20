@@ -1,8 +1,109 @@
 # Litera 开发交接
 
-更新时间：2026-10-16。路径基准：项目根目录。
+更新时间：2026-10-20。路径基准：项目根目录。
 
-## 当前停止点
+本轮完整功能与最终交互、分批测试证据、暂缓需求、手动部署及GitHub上传步骤见
+[2026-10-20交付索引](docs/development/2026-10-20-delivery.md)。
+最新快捷面板仅批注模式右键触发（非选中自动弹出），上工具/下颜色两行；上传提示已改为单篇上限MB。
+本次只完善文档，未自动暂存、提交、推送或运行Docker；35/36及用户最终验收门槛保持。
+
+
+## 2026-10-20 账号安全补充
+
+用户明确授权在个人资料页增加修改密码。已接入页面内账号安全表单和POST /auth/password，
+校验当前密码/新密码，成功同事务撤销本人全部会话并回登录；无新迁移、不改用户科研数据。
+详见[修改密码记录](docs/development/password-change.md)及[API契约](docs/design/api-contracts.md)。
+部署由用户手动重建API/nginx；不运行Compose、不提交/推送/同步/归档，不将本增量当成C2实际验收通过。
+
+2026-10-20角度编辑框修正：图片/签名属性框改按未旋转box定位，调角度时固定，移动/缩放时仍跟随。
+详见[插入角度记录末节](docs/development/insert-rotation.md)；上轮旋转API已部署时，本次仅需手动更新nginx。
+
+2026-10-20选区右键快捷面板：仅批注模式显示，上排高亮/下划线/波浪线/删除线/注释，下排常用色/自定义色；优先在选中文字上方显示，
+悬停保持、离开按距离淡出（50px消失）；复用原批注保存及草稿保护，支持原生全屏。
+见[快捷面板记录](docs/development/selection-quick-toolbar.md)。无后端变更，只需手动更新nginx，仍待用户实际验收。
+
+2026-10-20插入对象补充：水印、签名、图片支持同步角度滑块/手动输入（−90°～90°、1°步进），
+签名属性移除更换图片；图片/签名旋转接入保存、撤销与导出。无迁移，手动部署需同时更新api/nginx。
+详见[插入角度记录](docs/development/insert-rotation.md)，仍等待C2用户实际验收。
+
+2026-10-20阅读器验收反馈：移除“资产管理”入口及面板；图片编辑只保留更换图片，
+按用户再次反馈彻底移除重新读取/重试加载入口及相关提示，后台自动回收/撤销租约保持。见[图片入口精简记录](docs/development/reader-asset-ui.md)。
+
+## 当前阶段：P3-C2交付，等待用户实际功能/UI验收
+
+2026-10-17用户已正式授权tasks 6.1–6.6。本轮完善共享标签管理/溢出列表/批量关闭保护、
+各篇面板恢复、公共ReaderContext与navigation adapter；保留B1/B2/C1已验收交互和保存机制。
+实测1000页/DPR2/500%与10标签轮切，预算稳定，未新增复杂缓存或降低既有采样预算。
+500%触发已有像素保护时增加明确提示。无新HTTP端点/迁移，head保持0006_reader_assets。
+
+开发、实际测试批次、资源数据、已知边界和用户验收步骤见 [P3-C2记录](docs/development/p3-c2.md)，
+其他成员接入见 [Reader公共接口](docs/design/reader-public-api.md)。
+pageNumber现在明确为当前阅读物理页，选区起点由selectionPosition[0].pageNumber取得；
+消费者须核对documentId/contextRevision、取消自己的请求/订阅，引用来源未接入返回unavailable。
+
+最终功能与UI体验等待用户亲自验收；6.6用户验收未完成，不提前结束Change 02。
+任务当前35/36：6.1–6.5完成，6.6文档已更新但用户验收保持待完成。
+本轮有效测试：后端182/182（临时SQLite）、前端65/65、类型/生产构建、文献库22/22、
+认证UI10/10及隔离真实认证2/2；阅读器按全量与最终定向分批记录，陈旧布局断言已修正复测通过，
+不声称单一批次全量通过。最后C2生产4项、公共导航1项、稳定资源采样1项分别通过。
+1000页首帧1.786秒/完整搜索3.953秒，40个Worker创建峰值1，回库Worker与Canvas均0；
+回库heap约16.5–16.6MiB、DOM/监听计数稳定，不外推长时耐久或浏览器总RSS。
+OpenSpec严格6/6、29份文档154条本地链接及diff检查通过，详细批次和局限见C2记录。
+真实MySQL/旧业务升级和Adobe未测试，C1 Chrome/Edge用户确认范围保留，不补造版本或扩大结论。
+不运行Docker Compose、不改原件、不删除业务数据/卷；保留本轮之前未提交和暂存的改动，
+未自动commit/push/sync/archive，也未开发03–06。仅C2基础前端增量可只更新nginx；本会话密码/旋转代码若未部署，须同时更新api/nginx。
+下方C1及A/B记录为历史交接，涉及“C2未授权”的文字不再代表当前授权状态。
+
+## P3-C1历史停止点：已验收，交接完成
+
+用户在本会话明确确认“P3-C1我已验收通过”，并补充“5.5我也已测试，我测试了Google浏览器和Edge浏览器，都能正常显示导出的内容”。
+据此P3-A1/A2/B1/B2/C1均已通过实际功能/UI验收，Change 02的1.1–5.6完成，当前30/36。
+5.5按本轮用户明确确认的Google Chrome/Microsoft Edge范围完成；Adobe Acrobat Reader未测试，
+Chrome/Edge具体版本未提供，不补造为通过记录。真实MySQL专项仍无通过证据，用户验收不等同MySQL集成测试。
+
+下一阶段P3-C2（6.1–6.6）尚未启动，须等待用户另行授权。03–06未开发，不自动进入新阶段，
+不自动Git commit/push、同步主规格或OpenSpec archive。当前未提交改动须保留，不reset/clean。
+本轮只整理文档与交接，不修改业务代码，不运行Docker、迁移或重新执行历史业务测试，不需再次部署。
+文档收尾检查：OpenSpec严格6/6、17份文档108个本地链接目标及git diff --check通过；
+证据`.cache/c1-handoff-openspec.json`、`c1-handoff-doc-check.json`、`c1-handoff-status.json`。
+
+## P3-C1最终交付行为
+
+- 全部13类批注导出：高亮、下划线、波浪线、删除线、注释、自由文本、手绘、矩形、圆形、椭圆、视觉签名、水印、图片。没有独立荧光笔。
+- pypdf 6.20.1 + ReportLab 4.4.10及OFL Noto Sans SC常规字体，保留CropBox/Rotate/UserUnit与原页数；不增加附录，不修改原始PDF字节。
+- 注释为原生Text/Contents/Popup与确定的气泡AP；自由文本/水印使用FreeText语义保存全文，页面内容保持可见和层叠。水印不再使用Stamp，避免Edge额外显示注释图标。不承诺第三方原生可编辑。
+- 同步受保护POST /api/v1/documents/{id}/annotated-pdf，expectedAnnotationRevision比对已保存一致快照。临时副本隔离原件/资产，导出期间可继续编辑；下载前复验权限。
+- 每API进程并发1、渲染60秒/RSS512MiB、产物200MiB、下载120秒；取消/断线/异常及启动/周期孤儿扫描回收。复用现有CAS/commandId、undo/redo及文献清理；无新增迁移，head仍0006_reader_assets。
+- 统一下载下拉菜单提供带批注导出/原始PDF下载及说明，窄屏侧栏复用菜单；原件保留上传名，导出为原文件名_带批注.pdf。草稿须明确处理，不静默丢弃。
+- 导出状态为顶部居中轻量浮动通知，成功3秒收起；失败/处理中/草稿选择保留操作。注释悬浮显示/移走消失，单击固定/外部关闭，淡入淡出各100ms。
+- 原生全屏入口位于批注列表与下载之间，内收四角还原图标；只将Litera品牌/用户栏以200ms上下滑动收起/展开，文献管理/标签保留，阅读及编辑工具栏常驻正常占位，不覆盖PDF或侧栏。
+- 全屏动画结束后统一适应缩放并恢复阅读点；弹层挂到阅读器根容器。Esc由浏览器控制，Litera无Esc退出快捷键，浏览器退出不附带草稿取消/面板关闭。旧顶部感应/工具栏自动隐藏方案已取消。
+
+## 验收与测试证据
+
+各批次独立，不将历史测试冒充本轮重跑：
+
+| 批次 | 实际结果 | 证据 |
+| --- | --- | --- |
+| C1导出与注释修复 | 后端181/181，临时SQLite；13类×4页结构/独立渲染、原件hash及页数不变 | .cache/c1-stray-backend.log，docs/development/p3-c1-comment-popup.md |
+| 原生Edge额外图标 | Edge155.0.4283.45自动打开公开样本，旧版探针复现，修复版与对照像素一致；非人工版本证据 | .cache/c1-acceptance/edge-regression.json |
+| 下载菜单/中文命名 | 后端导出33/33、C1浏览器5/5，类型/构建通过 | .cache/c1-menu-*.log |
+| 最终全屏布局 | 类型/构建、Vitest62/62、生产Chromium12/12（全屏7+C1五例）；检查200ms双向动画和编辑不遮挡 | .cache/fullscreen-brand-layout-*.log |
+| B1/B2定向回归 | 前次生产Chromium15/15含全屏6+C1五例+B1/B2各两例，保存取消/undo/redo/橡皮擦 | .cache/fullscreen-final-browser.log |
+| 用户实际验收 | P3-C1整体功能/UI通过；Chrome/Edge导出内容显示正常，用户明确确认5.5 | 本会话2026-10-17确认，docs/development/p3-c1.md |
+
+开发记录：[C1与兼容矩阵](docs/development/p3-c1.md)、[注释/导出交互修复](docs/development/p3-c1-comment-popup.md)、
+[全屏最终布局](docs/development/reader-fullscreen.md)、[ADR 0007](docs/design/adr-0007-annotated-pdf-export.md)。
+.cache是本机自动化证据目录，不保证随Git传递；正式文档已保留结果摘要和可重复运行的测试/样本脚本。
+
+## 后续接手边界
+
+1. 先读本文件、README及Change 02 proposal/design/specs/tasks，再读上述最终修复记录，以最新实际代码为准。
+2. 获授权后仅按C2六项推进多文献完善、公共接入、资源实测、全流程及交接；不借交接修改已验收B1/B2保存和UI。
+3. Adobe独立兼容和浏览器版本号属于未提供的专项记录；不得声称已通过。真实MySQL、旧数据升级及大规模资源压力测试仍需独立证据。
+4. 不删除用户PDF、数据库或卷，不自动运行Compose/提交/推送/归档；部署继续由用户手动执行，下方历史运行说明保留。
+
+## B2历史交付记录（截至2026-10-16）
 
 2026-10-16大纲体验修复：PdfOutline默认全部折叠，点击箭头按需逐层展开，标题跳页保持不变；切文献/大纲数据重置展开状态。类型/生产构建及真实PDF导航定向1/1通过，详见A2 UI记录末节；无后端/数据库变化，该修复已通过用户实际验收。随后用户确认B2整体验收完成，当前24/36；本轮仅同步文档，不需再次部署。
 
@@ -47,7 +148,7 @@ docker compose ps
 | Change / 负责人 | 状态 |
 | --- | --- |
 | 01-literature-management / Jensen Zhang | 功能及UI已验收；33/34，专项MySQL补证；未归档 |
-| 02-pdf-reader / Jensen Zhang | P3-A1/A2/B1/B2已验收；24/36，C1尚未启动 |
+| 02-pdf-reader / Jensen Zhang | P3-A1/A2/B1/B2/C1用户已验收，30/36；Chrome/Edge显示通过，Adobe未测试；C2未开始 |
 | 03-translation / Siguo Liu | 规划完成，0/6；未实现 |
 | 04-literature-notes / Siguo Liu | 规划完成，0/6；未实现 |
 | 05-metadata-extraction / Jialu Ma | 规划完成，0/7；未实现 |
@@ -118,7 +219,7 @@ docker compose ps
 - 0004_reader_progress仅增加原表nullable view_mode/zoom_mode；旧值默认continuous/fit-width，旧PUT {}及旧null字段兼容。新状态写必须progress.version；原Document行锁串行化首次写入，MySQL使用FOR UPDATE当前读校验CAS。pypdf按需验证/缓存物理页数，不改变题录version或原PDF。
 - reader/progress先GET恢复，目标页成功后CAS记打开；1秒防抖、持续最多5秒一次，串行保存/离开flush，8秒超时。普通进度写recordOpen=false，不改变lastReadAt。失败保留本地sessionStorage草稿/提示重试并阻止静默离开；409明确选择载入服务端或基于最新版本保存本地。草稿按用户/文献隔离，刷新提示处理，退出/换账号清理。
 - reader/context.ts提供真实ReaderContext/SelectionPosition（含逐页textQuote与未旋转CropBox归一化rects）、单调contextRevision、可取消订阅及DOM事件。选区清除/切文献/离开发布真实更新或context-cleared；DPR不进入持久坐标。NoteDraft/Citation仅类型，03–06业务未实现。
-- P3-B1接入：复用context.ts选区、PdfPage的reader-object-layer/同一viewport及progress队列的错误处理经验；标注集revision/命令收据/undo必须按B1另建，不能复用progress.version。该A2接入说明为历史；B1现已在0005_annotations完成标注集/命令收据/undo，本轮B2已实现资产，导出仍未实施。
+- P3-B1接入：复用context.ts选区、PdfPage的reader-object-layer/同一viewport及progress队列的错误处理经验；标注集revision/命令收据/undo必须按B1另建，不能复用progress.version。该A2接入说明为历史；B1现已在0005_annotations完成标注集/命令收据/undo，B2已实现资产，C1导出现已实现并获验收。
 
 ## 下一阶段顺序与协作限制
 
@@ -128,11 +229,11 @@ docker compose ps
 | P3-A2 | 2.x 已验收 | 缩放、缩略图/大纲、搜索、进度/基础上下文；刷新恢复 |
 | P3-B1 | 3.1–3.6 已验收、正式交付 | 模型/API/CAS/幂等、六类文本批注、撤销/列表；保存重开一致 |
 | P3-B2 | 4.1–4.6 已开发、验证并通过用户验收 | 手绘、三形状、三插入及资产；全部13类验收 |
-| P3-C1 | 5.x | 全类型导出矩阵/ADR、快照/权限/清理；Edge/Acrobat可见、原件保真 |
-| P3-C2 | 6.x | 多标签完整菜单、公共接入、性能/全流程回归；多文献/窄屏/资源稳定 |
+| P3-C1 | 5.1–5.6 已验收 | 13类导出、Chrome/Edge用户显示验收、原件保真；Adobe未测试 |
+| P3-C2 | 本轮已授权开发与验证，等待用户实际功能/UI验收 | 多标签完整菜单、公共接入、性能/全流程记录见P3-C2文档 |
 
-P3-B1/B2验收均已完成；下一阶段为P3-C1（5.1–5.6），尚未启动，等待新会话明确授权。
+P3-B1/B2/C1验收均已完成；C2本轮已获授权，最终用户验收尚未完成，不自动结束Change 02。
 保留既有未提交及已暂存改动；不reset/覆盖其他成员代码，不自动commit/push或新建分支。
 迁移编号串行协调；公共DTO/事件/API变更列出生产者和消费者，避免各成员复制不同契约。
 Docker构建/启动由用户手动执行，不改全局设置、不删数据卷、不替用户运行数据库升级。
-未经明确要求不archive、不自动开始C1/C2或其他模块；本次文档同步后停止，等待新会话指令。
+未经明确要求不archive；C1验收文档交接后停止，不自动进入C2或其他模块。

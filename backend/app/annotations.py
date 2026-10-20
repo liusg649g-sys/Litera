@@ -121,8 +121,8 @@ class AnnotationInput(InputModel):
         if self.geometry.kind == "points":
             if self.type != "ink" or len({(p.x, p.y) for p in self.geometry.points}) < 2:
                 raise ValueError("无效笔迹")
-        if self.geometry.kind == "box" and self.type != "watermark" and self.geometry.rotation != 0:
-            raise ValueError("仅水印允许对象角度")
+        if self.geometry.kind == "box" and self.type not in ("watermark", "image", "signature") and self.geometry.rotation != 0:
+            raise ValueError("仅水印、图片与签名允许对象角度")
         if (self.assetId is not None) != (self.type in ("image", "signature")):
             raise ValueError("图片与签名必须关联本篇资产")
         if self.type in ("highlight", "underline", "squiggly", "strikeout") and not text:

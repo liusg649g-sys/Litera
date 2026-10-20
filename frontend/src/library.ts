@@ -54,6 +54,6 @@ export const recordOpen = (id: string, signal?: AbortSignal) => api('/documents/
 export const clampSidebar = (width: number) => Math.min(320, Math.max(180, width))
 export function sizeLabel(bytes: number) {
   if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB'
-  return (bytes / 1024 / 1024).toFixed(1) + ' MiB'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }

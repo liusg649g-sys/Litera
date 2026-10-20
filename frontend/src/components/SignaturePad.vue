@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nativeFullscreenEscape } from '../reader/fullscreen'
 import { ref, onBeforeUnmount } from 'vue'
 const emit=defineEmits<{confirm:[Blob];cancel:[];import:[]}>()
 const canvas=ref<HTMLCanvasElement>(),hasInk=ref(false)
@@ -18,4 +19,4 @@ function start(event:PointerEvent){
 function confirm(){if(hasInk.value)canvas.value?.toBlob(blob=>{if(blob)emit('confirm',blob)},'image/png')}
 onBeforeUnmount(()=>cleanup?.())
 </script>
-<template><section class="signature-pad" aria-label="创建视觉签名" @keydown.stop @keydown.esc.prevent.stop="emit('cancel')" @pointerdown.stop><strong>手写签名</strong><p>在下方书写，完成后到 PDF 页面放置。</p><canvas ref="canvas" width="600" height="200" aria-label="签名画布" @pointerdown="start" /><div><button type="button" @click="clear">清空</button><button type="button" @click="emit('import')">导入签名图片</button><button type="button" @click="emit('cancel')">× 取消</button><button type="button" :disabled="!hasInk" @click="confirm">✓ 放置签名</button></div></section></template>
+<template><section class="signature-pad" aria-label="创建视觉签名" @keydown="$event.key!=='Escape' || !nativeFullscreenEscape() ? $event.stopPropagation() : undefined" @keydown.esc="!nativeFullscreenEscape() && ($event.preventDefault(),$event.stopPropagation(),emit('cancel'))" @pointerdown.stop><strong>手写签名</strong><p>在下方书写，完成后到 PDF 页面放置。</p><canvas ref="canvas" width="600" height="200" aria-label="签名画布" @pointerdown="start" /><div><button type="button" @click="clear">清空</button><button type="button" @click="emit('import')">导入签名图片</button><button type="button" @click="emit('cancel')">× 取消</button><button type="button" :disabled="!hasInk" @click="confirm">✓ 放置签名</button></div></section></template>

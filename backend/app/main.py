@@ -11,19 +11,20 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import get_settings
 from .database import get_db
 from .models import LoginSession, User
-from .schemas import LoginInput, ProfileInput, RegisterInput, user_dto
+from .schemas import LoginInput, PasswordChangeInput, ProfileInput, RegisterInput, user_dto
 from .security import csrf_token, dummy_hash, password_hasher, token_hash, verify_password
 from .documents import UploadLimitMiddleware, create_document_router
 from .annotations import create_annotation_router
 
 from .reader_assets import create_asset_router, sweep_assets
+from .pdf_exports import create_export_router, sweep_exports
 from starlette.concurrency import run_in_threadpool
 
 @asynccontextmanager
@@ -31,6 +32,7 @@ async def lifespan(app):
     async def collect():
         while True:
             await run_in_threadpool(sweep_assets)
+            await run_in_threadpool(sweep_exports)
             await asyncio.sleep(60)
     collector = asyncio.create_task(collect())
     try:
@@ -149,7 +151,9 @@ def login(payload: LoginInput, request: Request, response: Response, db: Session
     password = payload.password.get_secret_value()
     if len(password) > 128:
         fail(401, "INVALID_CREDENTIALS", "邮箱或密码不正确")
-    user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
+    # Serialize login with password changes: an old password must not mint a
+    # session after a concurrent change has revoked the account's sessions.
+    user = db.scalar(select(User).where(User.email == str(payload.email).lower()).with_for_update())
     valid = verify_password(user.password_hash if user else dummy_hash, password)
     if not user or not valid:
         fail(401, "INVALID_CREDENTIALS", "邮箱或密码不正确")
@@ -171,6 +175,34 @@ def login(payload: LoginInput, request: Request, response: Response, db: Session
 @app.get("/api/v1/auth/session")
 def session_info(session: LoginSession = Depends(current_session), db: Session = Depends(get_db)):
     return {"user": user_dto(db.get(User, session.user_id)), "csrfToken": csrf_token(session)}
+
+@app.post("/api/v1/auth/password", status_code=204, dependencies=[Depends(rate_limit)])
+def change_password(payload: PasswordChangeInput, response: Response,
+                    session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
+    # Current reads under MySQL REPEATABLE READ; authentication earlier in the
+    # request does not authorize reusing a session revoked while waiting here.
+    user = db.scalar(select(User).where(User.id == session.user_id).with_for_update()
+                     .execution_options(populate_existing=True))
+    active = db.scalar(select(LoginSession).where(LoginSession.id == session.id).with_for_update()
+                       .execution_options(populate_existing=True))
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if not user or not active or active.revoked_at or active.expires_at <= now:
+        fail(401, "UNAUTHENTICATED", "登录已失效，请重新登录")
+    old_password = payload.current_password.get_secret_value()
+    new_password = payload.new_password.get_secret_value()
+    if not settings.password_min_length <= len(new_password) <= 128:
+        fail(422, "INVALID_PASSWORD", f"密码长度应为 {settings.password_min_length}–128 个字符")
+    if not verify_password(user.password_hash, old_password):
+        fail(400, "INVALID_CURRENT_PASSWORD", "当前密码不正确")
+    if new_password == old_password:
+        fail(400, "PASSWORD_UNCHANGED", "新密码不能与当前密码相同")
+    user.password_hash = password_hasher.hash(new_password)
+    user.updated_at = now
+    db.execute(update(LoginSession).where(LoginSession.user_id == user.id, LoginSession.revoked_at.is_(None))
+               .values(revoked_at=now))
+    db.commit()
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True,
+                           secure=settings.cookie_secure, samesite="lax")
 
 @app.post("/api/v1/auth/logout", status_code=204)
 def logout(response: Response, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
@@ -196,3 +228,4 @@ app.include_router(create_document_router(current_session, require_csrf))
 app.include_router(create_annotation_router(current_session, require_csrf))
 
 app.include_router(create_asset_router(current_session, require_csrf))
+app.include_router(create_export_router(current_session, require_csrf))

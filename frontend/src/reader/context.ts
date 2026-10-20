@@ -1,4 +1,4 @@
-import { shallowRef } from 'vue'
+import { shallowReadonly, shallowRef } from 'vue'
 import { viewportToNormalized } from './state'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 export interface NormalizedRect { x: number; y: number; width: number; height: number; baseline?: number }
@@ -6,16 +6,24 @@ export interface SelectionPosition { pageNumber: number; rects: NormalizedRect[]
 export interface Citation { documentId: string; extractionVersion: string; chunkId: string; pageNumber: number; quote: string }
 export interface NoteDraft { documentId: string; pageNumber: number | null; annotationId: string | null; title: string; content: string; sourceType: 'manual' | 'selection' | 'translation' | 'ai'; sourceId: string | null; originalText: string | null; translatedText: string | null; citations: Citation[] }
 export interface ReaderContext { documentId: string; pageNumber: number; selectedText: string; selectionPosition: SelectionPosition[] | null; annotationId: string | null; contextRevision: number }
-export type ReaderEvent = 'context-change' | 'selection-change' | 'document-change' | 'context-cleared'
+export type ReaderEvent = 'context-change' | 'selection-change' | 'document-change' | 'page-change' | 'context-cleared'
 let revision = 0
-export const readerContext = shallowRef<Readonly<ReaderContext> | null>(null)
+const currentContext = shallowRef<Readonly<ReaderContext> | null>(null)
+export const readerContext = shallowReadonly(currentContext)
 const listeners = new Set<(event: ReaderEvent, context: Readonly<ReaderContext> | null) => void>()
-export function subscribeReaderContext(callback: (event: ReaderEvent, context: Readonly<ReaderContext> | null) => void) { listeners.add(callback); return () => { listeners.delete(callback) } }
-export function publishContext(event: ReaderEvent, value?: Omit<ReaderContext, 'contextRevision' | 'annotationId'>) {
+export function subscribeReaderContext(callback: (event: ReaderEvent, context: Readonly<ReaderContext> | null) => void, signal?: AbortSignal) {
+  const stop = () => { listeners.delete(callback); signal?.removeEventListener('abort', stop) }
+  if (!signal?.aborted) { listeners.add(callback); signal?.addEventListener('abort', stop, { once: true }) }
+  return stop
+}
+export function isReaderContextCurrent(value: Pick<ReaderContext, 'documentId' | 'contextRevision'>) {
+  return readerContext.value?.documentId === value.documentId && readerContext.value?.contextRevision === value.contextRevision
+}
+export function publishContext(event: ReaderEvent, value?: Omit<ReaderContext, 'contextRevision' | 'annotationId'> & { annotationId?: string | null }) {
   revision++
-  const snapshot = value ? structuredClone({ ...value, annotationId: null, contextRevision: revision }) : null
+  const snapshot = value ? structuredClone({ ...value, annotationId: value.annotationId ?? null, contextRevision: revision }) : null
   if (snapshot) { snapshot.selectionPosition?.forEach(p => { p.rects.forEach(Object.freeze); Object.freeze(p.rects); p.textRanges?.forEach(Object.freeze); if(p.textRanges) Object.freeze(p.textRanges); Object.freeze(p) }); if (snapshot.selectionPosition) Object.freeze(snapshot.selectionPosition); Object.freeze(snapshot) }
-  readerContext.value = snapshot
+  currentContext.value = snapshot
   window.dispatchEvent(new CustomEvent(`litera:reader:${event}`, { detail: snapshot }))
   for (const callback of listeners) { try { callback(event, snapshot) } catch (error) { console.warn('[Litera] ReaderContext subscriber failed', error) } }
 }

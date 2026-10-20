@@ -44,7 +44,7 @@ test('real upload → local Worker/Canvas/text selection, views, navigation and 
   await expect(page.locator('.pdf-page')).toHaveCount(1); await expect(page.getByRole('button',{name:'下一页',exact:true})).toBeDisabled()
   await page.getByLabel('PDF 阅读区域',{exact:true}).focus(); await page.keyboard.press('ArrowLeft'); await rendered(page,5)
   await jump(page,999); await expect(page.getByRole('status')).toContainText('请输入 1–7')
-  const downloading=page.waitForEvent('download');await page.getByRole('link',{name:'下载原始 PDF'}).click();const download=await downloading
+  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'下载 PDF',exact:true}).click();await page.getByRole('menuitem',{name:'下载原始 PDF',exact:true}).click();const download=await downloading
   expect(readFileSync((await download.path())!)).toEqual(bytes)
   await expect.poll(async()=> (await(await page.request.get(`/api/v1/documents/${doc.id}/progress`)).json()).pageNumber).toBe(5)
   const progress=await(await page.request.get(`/api/v1/documents/${doc.id}/progress`)).json();expect(progress.zoom).toBeGreaterThanOrEqual(.5)

@@ -99,7 +99,7 @@ test('reading group collapses secondary toolbar without changing page/frame; ico
  expect(await page.getByLabel('PDF 阅读区域',{exact:true}).evaluate(e=>e.clientHeight)).toBe(height)
  await expect(page.locator('[data-page="4"] canvas')).toHaveAttribute('data-retained-frame','yes')
  await expect(page.locator('.pdf-page')).not.toContainText('正在渲染')
- for(const name of ['搜索文献','批注列表','下载原始 PDF','导出功能开发中']){
+ for(const name of ['搜索文献','批注列表']){
   const action=page.getByRole(name==='下载原始 PDF'?'link':'button',{name,exact:true});await action.hover()
   await expect(page.getByRole('tooltip',{name,exact:true})).toBeVisible()
   await page.mouse.move(10,10);await expect(page.getByRole('tooltip',{name,exact:true})).not.toBeVisible()

@@ -1,5 +1,31 @@
 # 数据模型说明（已实现阶段与后续逻辑模型）
 
+## 2026-10-20 增量兼容说明
+
+修改密码复用users.password_hash/updated_at与sessions，在同一事务撤销本人全部会话，无新增表或迁移。
+插入角度复用annotations.geometry JSON的box.rotation，非零允许类型为watermark/image/signature，范围−90至90，其他box仍0，零值收据表示保持整数0兼容。
+快捷面板颜色/选区、属性框定位和上传单位均为前端交互，不新增持久化字段或提取结果；原始PDF只读、资产清理租约不变。详情见[交付索引](../development/2026-10-20-delivery.md)。
+
+## P3-C2 会话状态与版本边界（2026-10-17）
+
+无新增迁移，head保持0006_reader_assets，已有用户/题录/文献/进度/对象/资产及原PDF不变。
+共享readerTabs只增加每文献左右面板开关、面板选择和左栏宽度的轻量SPA状态，不持有PDF实例/Canvas/字节。
+contextRevision仅用于前端快照时序，不写数据库、不代替progress.version/annotationRevision/extractionVersion。
+失败草稿继续使用原按用户/文献隔离的sessionStorage及确切commandId收据核对；批量关闭不删除草稿或冲突备份。
+公共接口见 [Reader接入说明](reader-public-api.md)。
+
+## P3-C1 导出快照（2026-10-17）
+
+采用同步请求，不新增导出作业表/迁移，迁移head保持0006_reader_assets。
+复用Document行写锁与document_reader_state.annotation_revision，按16行批次读取
+活动对象并累计JSON容量（16MiB上限），避免先无界加载集合。锁内复制原PDF与引用资产，
+快照JSON记录精确revision和独立副本映射；复制完成即释放业务锁。
+独立临时副本承担导出引用租约，原reader_assets的1小时/24小时及cleanup_jobs规则不变，
+无需在数据库引用计数或延长已删对象的租约。导出期间后续修改/原文件清理不影响副本，
+但下载前文献失效将拒绝发送。结束/异常清理工作目录，孤儿扫描见API契约。
+生产者pdf_exports.py/capture，消费者独立pdf_export_worker.py/pdf_export_renderer.py；
+不修改B1/B2模型、收据、撤销历史、业务PDF字节或03–06表。
+
 ## P3-B2 增量实现（2026-10-16）
 
 `0006_reader_assets`接0005，只新增reader_assets及owner/document/status索引，不重建或清空旧表。字段：id、owner_id（users外键）、document_id（documents外键）、storage_key（唯一、私有）、sha256（规范化字节哈希）、mime_type、width/height、size_bytes、status、attempts、error_code、created_at、expires_at。时间沿用MySQL DATETIME(6)/SQLite DateTime。status为uploading/ready/cleaning/failed/deleted；活动引用expires_at=null，临时上传租约1小时，最后活动对象删除或替换后租约24小时。删除成功保留台账且排除容量计算；文献永久删除最终移除资产行。

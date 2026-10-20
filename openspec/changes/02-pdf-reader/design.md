@@ -2,15 +2,25 @@
 
 ## Context
 
-2026-10-16：01及02 A1/A2/B1已通过用户实际验收。B2七类绘制/插入及资产已落地，用户于2026-10-16明确确认整体功能/UI验收通过；4.1–4.6完成，当前24/36，C1/C2及03–06未实施。当前实现与测试以 [B2记录](../../../docs/development/p3-b2.md) 为准，下面A/B1记录属于历史，后续目标段不代表已实施导出。范围见proposal，任务见tasks。
+P3-C2于2026-10-17获授权。实际实现和测试见[P3-C2记录](../../../docs/development/p3-c2.md)，
+公共生产者/消费者与调用边界见[Reader公共接口](../../../docs/design/reader-public-api.md)。
+复用共享标签及原保存/草稿守卫，增加固定标签管理菜单、完整列表和独立面板状态；不重设计已验收阅读器。
+长文/十标签实测后保留现有渲染与搜索预算，不引入复杂缓存；像素上限触发时提供清晰度提示。
+C2最终功能/UI等待用户验收，尚未正式结束Change 02；下方C1停止状态为历史。
+
+P3-C1历史交接（非当前C2状态）：2026-10-17，A1/A2/B1/B2及P3-C1均已通过用户实际功能/UI验收，当时Change 02为30/36。用户补充确认5.5已在Google Chrome和Microsoft Edge测试，导出内容均正常显示；按本轮确认的浏览器范围完成5.5，Adobe Acrobat Reader未测试、不得标为通过。浏览器具体版本未提供，真实MySQL专项未补证。C2及03–06未启动，未提交/推送/同步/归档。 技术路线与边界见[ADR 0007](../../../docs/design/adr-0007-annotated-pdf-export.md)，验收及测试见[C1记录](../../../docs/development/p3-c1.md)。
+
+### P3-C1 实际实现
+
+先完成5.1独立实验、兼容矩阵与ADR，再实现pypdf+ReportLab矢量内容叠加、OFL嵌入中文字体、原生注释正文与Popup、其余内容叠加，不增加附录页。同步POST /documents/{id}/annotated-pdf接受expectedAnnotationRevision，文献锁内复制一致快照，独立临时副本承担资产租约。渲染在受限子进程执行，释放业务锁后可继续编辑；下载前复验权限。每进程并发1、渲染60秒/RSS512MiB/产物200MiB、下载120秒，取消/断线/异常及孤儿目录清理。无新迁移，B1/B2保存与清理规则不变。正文缺字明确失败，不承诺第三方原生可编辑；Chrome/Edge已获用户显示验收确认，Adobe未测试，具体版本未提供。
 
 ### P3-B2 实际实现
 
-新增0006_reader_assets，保留0005及原业务表。Pillow固定12.0.0校验PNG/JPEG结构、完整解码与尺寸/容量，重新编码规范化朝向及元数据。上传先台账后文件，清理先持久化状态/尝试数；1小时未引用上传、24小时已删对象租约，启动与每60秒扫描，失败显式重试；永久删除接原cleanup_jobs。API、DTO及生产者/消费者见 [API补充](../../../docs/design/api-contracts.md) 和 [数据模型](../../../docs/design/data-model.md)。
+新增0006_reader_assets，保留0005及原业务表。Pillow固定12.0.0校验PNG/JPEG结构、完整解码与尺寸/容量，重新编码规范化朝向及元数据。上传先台账后文件，清理先持久化状态/尝试数；1小时未引用上传、24小时已删对象租约，启动与每60秒扫描，到期失败自动重试（受保护清理API仍支持显式重试）；永久删除接原cleanup_jobs。API、DTO及生产者/消费者见 [API补充](../../../docs/design/api-contracts.md) 和 [数据模型](../../../docs/design/data-model.md)。
 
 PdfDrawingObjects复用PdfPage同一viewport，B1层及保存系统保留。手绘逐帧预览、跨页拆分，10000点/60秒/100000屏幕像素路径上限，pointercancel不留对象。三形状拖动预览、页面内确认；圆按物理尺寸等比，PNG/JPEG/签名按真实比例。签名轻量画布确认后放置，水印只当前页/对象角度。新对象属性就近预览及✓保存/×取消，不用中央模态；对应工具组选择与实时移动/缩放，选中对象临时置前保证重叠控制点可操作，阅读模式穿透文本且只联动列表。
 
-全部13类共用列表、串行CAS/commandId、收据、草稿保护和真实补偿撤销重做。明确ASSET_UNAVAILABLE拒绝后可替换图片用新命令重试；未知结果仍保留原命令核对。清理API202表示失败未完成，管理界面可查询状态并重试。导出租约与导出接口不属于B2。
+全部13类共用列表、串行CAS/commandId、收据、草稿保护和真实补偿撤销重做。明确ASSET_UNAVAILABLE拒绝后可替换图片用新命令重试；未知结果仍保留原命令核对。清理API202表示失败未完成，状态查询/清理接口保留；2026-10-20按用户反馈移除阅读器资产管理面板，由后台到期扫描清理。按用户再次反馈，图片编辑只保留更换图片，彻底移除重新读取/重试加载入口、状态和相关提示；真实加载错误仅提示检查网络或更换图片，不改变批注草稿。导出租约与导出接口不属于B2。
 
 
 已逐张检查[15–25截图索引](../../../docs/references/xiaolvjing/reader-reference-index.md)：15整体、16标签菜单、17左导航、18视图、19缩放、23工具、24搜索、25列表。20–22仅说明未来扩展关系。用户要求优先于截图：不照搬视图自由组合、缩略图滑块、核心工具下拉、商业功能或品牌素材。
@@ -112,9 +122,9 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 | 自由文本 | 点击/框选并输入纯文本 | 移动、改框、字号/颜色；换行按框，导出验证字体与可见内容 |
 | 手绘 | 指针采样页内点列 | 颜色/笔宽/透明度、整对象移动缩放；跨页拆对象，pointercancel不留半条 |
 | 矩形/圆/椭圆 | 页内拖动box | 边框、填充可无、线宽；圆等比，另两类自由缩放，限页内 |
-| 签名 | 手写确认后放置，或本地PNG/JPEG签名图 | 单页视觉对象，移动/等比缩放；无签名库/证书签章 |
+| 签名 | 手写确认后放置，或本地PNG/JPEG签名图 | 单页视觉对象，移动/等比缩放/角度；属性框无更换图片入口，无签名库/证书签章 |
 | 水印 | 输入纯文本，当前页预览确认 | 内容、角度、透明度、字号、box移动/尺寸；首版仅当前页，无全篇批量 |
-| 图片 | 本地PNG/JPEG真实解码后放置 | 保持纵横比移动/改大小，存本篇私有assetId；不接受远程URL/SVG/任意附件 |
+| 图片 | 本地PNG/JPEG真实解码后放置 | 保持纵横比移动/改大小、支持角度，存本篇私有assetId；不接受远程URL/SVG/任意附件 |
 
 所有对象可选择、编辑属性、删除；橡皮擦为命中后删除整个Litera对象，不擦原PDF或局部分割笔迹。删除键只在对象选中且阅读器聚焦时生效。右侧列表覆盖本篇全部Litera对象及注释/插入，展示页/类型/摘要；按页位置或创建时间排序，按类型/颜色筛选，点击定位；编辑/删除同步列表与未保存状态。搜索/列表共用右区，分别保留本篇状态。
 
@@ -144,7 +154,7 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 | 现有pypdf | 优先评估复用注释写入/叠加PDF，不当万能渲染排版器；必要配ReportLab生成文字/矢量叠加 | 锁定版本真实API、外观/字体限制；新增库仅实施时评估 |
 | PyMuPDF备选 | 注释、绘制及烘焙能力候选 | 精确版本、平台包、字体及许可适配审阅后再选；目前未安装/未决定 |
 
-后续C1导出验收清单共13类（尚未实施导出）：
+C1导出清单共13类（已实现并获用户验收，以下为类型范围）：
 
 | 分组 | 对象 | 数量 |
 | --- | --- | --- |
@@ -165,7 +175,7 @@ AnnotationDTO保留id/documentId/type/pageNumber/position/selectedText/content/c
 
 ### 9. 公共上下文与成员边界
 
-ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|null、annotationId|null、contextRevision。物理1-based页码、坐标见本设计；有文本选区时ReaderContext.pageNumber取选区起始页，无选区时取当前阅读页，UI当前页状态另由视图保持。文献/页/选区变化递增工作区单调revision（含A→B→A），清空选区发空文本/null，销毁发context-cleared；context-change/selection-change/document-change发布真实快照，响应用documentId+revision验证。
+ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|null、annotationId|null、contextRevision。C2统一pageNumber为当前阅读的物理1-based页码，跨页选区起点从selectionPosition[0].pageNumber取得；坐标见本设计。文献/页/选区/所选已保存批注变化递增工作区单调revision（含A→B→A），清空选区发空文本/null，切换开始/失败/销毁发context-cleared；context-change/selection-change/document-change/page-change发布真实快照，响应用documentId+revision验证。订阅支持取消函数或AbortSignal；失效来源/未接入adapter明确返回错误或unavailable，不伪造业务结果。
 
 02拥有公共types、可取消订阅事件和导航adapter；03消费选区，04消费NoteDraft来源，05复用documentId/物理页契约，06消费上下文并提供带提取版本引用。引用导航只接受本人有效文献/页码，chunk/extractionVersion由真实来源模块验证，未接入返回unavailable，不制造chunk/调用服务。保留NoteDraft/Citation类型，不实现save-note UI或业务表；上下文不是权限凭证，后端每次校验owner/关联。PDF本地搜索不读05文本API。没有翻译面板/笔记页/AI聊天/机器人/模拟业务。
 
@@ -183,7 +193,7 @@ ReaderContext保持documentId、pageNumber、selectedText、SelectionPosition[]|
 
 ## Migration Plan
 
-按A1→A2→B1→B2→C1→C2实施，详见tasks。A1/A2/B1已通过用户实际验收，B2开发及用户整体功能/UI验收完成，4.1–4.6已勾选，当前24/36；下一阶段P3-C1（5.1–5.6）尚未启动。迁移链至0006_reader_assets，保留原用户/题录/PDF/批注/进度；自动化使用隔离SQLite，MySQL仅离线DDL，专项MySQL及旧数据升级仍待独立证据。未运行Compose或业务迁移，不修改03–06状态，不提交或归档，本阶段已验收，等待新会话指令。
+按A1→A2→B1→B2→C1→C2实施，详见tasks。A1/A2/B1/B2/C1均获用户实际验收；C2本轮已授权实施，6.1–6.5开发及自动化完成，当前35/36，6.6文档已交付但用户实际功能/UI验收仍待完成。迁移链至0006_reader_assets，C1/C2无新迁移；保留用户/题录/PDF/批注/进度。自动化为隔离SQLite，真实MySQL专项未补证；未运行Compose或业务迁移，不改03–06状态，不提交/归档。
 
 ## Open Questions
 
@@ -226,3 +236,18 @@ AnnotationList复用右区，位置/时间排序、类型/颜色筛选、摘要/
 文本SVG对象鼠标穿透，在PdfPage以结束后的单击命中测试选择，拖选不触发编辑；阅读组不画选框，创建后清选中，空白/Esc/阅读退出编辑。页点气泡的尾尖固定原坐标，屏幕尺寸恒定并在靠边时翻转，使用原anchor模型；批注组自由文本/气泡可直接拖动，局部preview随pointermove，pointerup一条edit，Esc/pointercancel/换文献/换倍率/卸载清预览。失败位置由原保存队列保留草稿，可重试/补偿撤销。
 
 字体比例和字符范围仅为原JSON中可选字段，旧JSON缺省不输出null，旧墓碑可恢复；不改schemaVersion、不新增迁移。API/认证/CAS/收据/进度机制沿用。成功反馈只在真实写入确认后、PDF区域顶部居中显示1秒绿色对号，单实例且不接收鼠标；失败/冲突保留原明确提示。工具语义SVG为项目自绘，无新依赖。详细证据及Windows手动验收见开发记录末节。
+
+
+## 2026-10-20 插入角度验收反馈
+
+水印、图片、签名共用−90°至90°角度滑块和数值输入，步进1°，数值显示当前角度；输入非整数取最近整数，越界夹取，暂时清空输入失焦恢复当前值。既有水印按框裁切及未旋转编辑框保持。
+图片/签名内容与选框、四角控制点在真实CropBox物理比例下绕中心旋转；拖动保持角度，缩放逆变换指针增量，保持图片纵横比及对角锚点。rotation沿用既有JSON，零值收据表示和CAS不变，无数据库迁移。
+后端仅将允许非零box.rotation的类型从watermark扩到watermark/image/signature；导出ReportLab以相反坐标方向应用相同中心角度，不改原始PDF。
+用户允许移除签名的更换图片按钮，本轮选择直接移除；签名创建流程沿用，图片对象保留更换图片。重读入口仍已彻底删除。
+
+
+## 2026-10-20 选区右键快捷面板
+
+新增PdfSelectionToolbar，置于readerRoot内以兼容原生全屏；有效真实文本选区才接管阅读区域contextmenu，普通菜单不变。选区右键行上方优先、空间不足时下方避让并约束可视范围；非计时消失，按指针距矩形面板的欧氏距离映射opacity=max(0,1-distance/50)，内部悬停保持1，超过50px关闭。键盘焦点位于面板时保持可操作，Shift+F10可触发，Esc关闭。
+面板上排五个工具复用AnnotationToolIcon及createFromSelection，下排复用annotationColors及原生自定义取色；颜色只更新新建默认色并与顶部同步，不调用已有对象改色逻辑、不提前提交API。原生取色期间暂缓失焦/选区关闭，确认或取消恢复原Range。按钮按下阻止默认焦点行为以保留原Range；公共ReaderContext、坐标采集、串行保存/收据/CAS、四标记自动保存和右侧注释卡片确认逻辑沿用。按用户最新反馈仅批注组可选区右键，阅读/形状/插入组不显示；有现存编辑/插入状态或活动绘制工具时不打开，不加入自由文本/手绘。
+选区变动、滚动、resize、失焦、禁用、切文献/销毁关闭，移除所有局部/全局监听；异步定位用本地revision丢弃陈旧结果，创建仍用原文献generation保护。无新API/数据库/依赖或03–06业务。

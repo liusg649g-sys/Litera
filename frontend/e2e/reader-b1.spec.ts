@@ -399,3 +399,133 @@ test('B1 superscript citations share one body line for all four marks and legacy
   await page.reload();await rendered(page);await aligned()
   expect(await annotations(page,doc.id)).toEqual(items)
 })
+
+
+async function quickPanel(page:Page){
+  await tool(page,'批注')
+  const span=page.locator('[data-page="1"] .textLayer span').first()
+  const length=(await span.textContent())!.length,end=Math.min(length,14)
+  await dragText(page,span,1,span,end)
+  const text=await page.evaluate(()=>window.getSelection()?.toString())
+  const at=await caret(span,Math.min(5,end-1))
+  await page.mouse.click(at.x,at.y,{button:'right'})
+  const panel=page.getByRole('toolbar',{name:'选区批注快捷面板',exact:true})
+  await expect(panel).toBeVisible()
+  await expect(panel).toHaveCSS('opacity','1')
+  return {panel,text,span}
+}
+
+test('B1 selection quick panel creates exactly five anchored annotation types',async({page},info)=>{
+  test.setTimeout(90000)
+  const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('Quick selection toolbar',3))).json()
+  await page.goto(`/reader/${doc.id}`);await rendered(page);await zoom(page,100);await rendered(page)
+  const kinds=['highlight','underline','squiggly','strikeout','comment']
+  for(const [i,label] of ['高亮','下划线','波浪线','删除线','注释'].entries()){
+    const {panel,text}=await quickPanel(page)
+    await expect(panel.getByRole('group',{name:'快捷批注工具',exact:true}).getByRole('button')).toHaveCount(5)
+    await expect(panel.getByRole('button',{name:'自由文本',exact:true})).toHaveCount(0)
+    await expect(panel.getByRole('button',{name:'手绘',exact:true})).toHaveCount(0)
+    const colors=['#9B0000','#47A58E','#6395CF','#F5D547','#123456'],color=colors[i]!
+    if(i<4){await panel.getByRole('button',{name:'快捷批注颜色 '+color,exact:true}).click();await expect(panel.getByRole('button',{name:'快捷批注颜色 '+color,exact:true})).toHaveAttribute('aria-pressed','true')}
+    else {
+      const custom=panel.getByLabel('快捷批注自定义颜色',{exact:true})
+      await custom.dispatchEvent('pointerdown',{pointerType:'mouse'})
+      await page.evaluate(()=>window.dispatchEvent(new Event('blur')))
+      await expect(panel).toBeVisible()
+      await custom.fill(color)
+      await custom.dispatchEvent('pointerdown',{pointerType:'mouse'});await custom.dispatchEvent('cancel')
+    }
+    await expect(panel).toBeVisible();expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe(text)
+    expect((await annotations(page,doc.id)).length).toBe(i)
+    if(i===0)await page.screenshot({path:info.outputPath('selection-quick-toolbar.png')})
+    await panel.getByRole('button',{name:label,exact:true}).click()
+    await expect(panel).toHaveCount(0)
+    if(label==='注释'){
+      await expect(page.getByLabel('批注正文',{exact:true})).toBeVisible()
+      await page.getByLabel('批注正文',{exact:true}).fill('来自选区右键的注释')
+      await tool(page,'保存批注')
+    }
+    await saved(page,doc.id,i+1)
+    const item=(await annotations(page,doc.id)).find(a=>a.type===kinds[i])
+    expect(item.selectedText.trim()).toBe(text!.trim());expect(item.geometry.kind).toBe('text');expect(item.color.toUpperCase()).toBe(color)
+    expect(item.position[0].textRanges[0]).toMatchObject({start:1,end:14})
+  }
+  await tool(page,'撤销批注');await saved(page,doc.id,4);await tool(page,'重做批注');await saved(page,doc.id,5)
+  await page.reload();await rendered(page)
+  expect((await annotations(page,doc.id)).map(a=>a.type).sort()).toEqual([...kinds].sort())
+})
+
+test('B1 selection quick panel fades by distance and clears on escape scroll selection and document changes',async({page})=>{
+  const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('Quick fade toolbar',3))).json()
+  const other=await(await upload(page.request,token,readerPdf('Other quick toolbar',1))).json()
+  await page.goto(`/reader/${doc.id}`);await rendered(page);await zoom(page,100);await rendered(page)
+  let {panel,text}=await quickPanel(page)
+  const b=(await panel.boundingBox())!
+  const selected=await page.evaluate(()=>{const r=window.getSelection()!.getRangeAt(0).getBoundingClientRect();return {top:r.top,bottom:r.bottom}})
+  expect(Math.min(Math.abs(b.y+b.height-selected.top),Math.abs(b.y-selected.bottom))).toBeLessThanOrEqual(12)
+  await page.mouse.move(b.x+10,b.y+b.height/2)
+  await expect(panel).toHaveCSS('opacity','1')
+  await page.mouse.move(b.x-25,b.y+b.height/2)
+  await expect.poll(async()=> Number(await panel.evaluate(el=>getComputedStyle(el).opacity))).toBeCloseTo(.5,1)
+  await page.mouse.move(b.x+10,b.y+b.height/2);await expect(panel).toHaveCSS('opacity','1')
+  await page.mouse.move(b.x-51,b.y+b.height/2);await expect(panel).toHaveCount(0)
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe(text)
+  ;({panel}=await quickPanel(page));await tool(page,'阅读');await expect(panel).toHaveCount(0)
+  ;({panel}=await quickPanel(page));await page.keyboard.press('Escape');await expect(panel).toHaveCount(0)
+  ;({panel}=await quickPanel(page));await page.evaluate(()=>window.getSelection()?.removeAllRanges());await expect(panel).toHaveCount(0)
+  ;({panel}=await quickPanel(page));await page.getByLabel('PDF 阅读区域',{exact:true}).evaluate(el=>el.scrollTop+=100);await expect(panel).toHaveCount(0)
+  ;({panel}=await quickPanel(page));await page.goto(`/reader/${other.id}`);await rendered(page);await expect(panel).toHaveCount(0)
+  expect(await annotations(page,doc.id)).toHaveLength(0);expect(await annotations(page,other.id)).toHaveLength(0)
+})
+
+
+test('B1 selection quick panel supports fullscreen keyboard and preserves ordinary context menus',async({page})=>{
+  const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('Keyboard quick toolbar',2))).json()
+  await page.goto(`/reader/${doc.id}`);await rendered(page);await zoom(page,100);await rendered(page)
+  await page.evaluate(()=>document.addEventListener('contextmenu',e=>{(window as any).__ordinaryMenuPrevented=e.defaultPrevented}))
+  await page.locator('[data-page="1"]').click({position:{x:50,y:300},button:'right'})
+  await expect(page.getByRole('toolbar',{name:'选区批注快捷面板',exact:true})).toHaveCount(0)
+  expect(await page.evaluate(()=>(window as any).__ordinaryMenuPrevented)).toBe(false)
+  await page.keyboard.press('Escape')
+  const readingSpan=page.locator('[data-page="1"] .textLayer span').first()
+  await dragText(page,readingSpan,1,readingSpan,14)
+  const readingPoint=await caret(readingSpan,5)
+  await page.mouse.click(readingPoint.x,readingPoint.y,{button:'right'})
+  await expect(page.getByRole('toolbar',{name:'选区批注快捷面板',exact:true})).toHaveCount(0)
+  expect(await page.evaluate(()=>(window as any).__ordinaryMenuPrevented)).toBe(false)
+  await page.keyboard.press('Escape')
+  await tool(page,'全屏阅读');await expect(page.locator('.reader-brandbar-slot')).toHaveCSS('height','0px')
+  let {panel}=await quickPanel(page)
+  expect(await panel.evaluate(el=>document.fullscreenElement?.contains(el))).toBe(true)
+  await panel.getByRole('button',{name:'下划线',exact:true}).click();await saved(page,doc.id,1)
+  await page.evaluate(()=>document.exitFullscreen());await expect(page.locator('.reader-brandbar-slot')).toHaveCSS('height','48px')
+  const span=page.locator('[data-page="1"] .textLayer span').first()
+  await dragText(page,span,1,span,14)
+  await page.keyboard.press('Shift+F10')
+  panel=page.getByRole('toolbar',{name:'选区批注快捷面板',exact:true})
+  await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:'高亮',exact:true})).toBeFocused()
+  await page.keyboard.press('Enter');await saved(page,doc.id,2)
+})
+
+
+test('B1 selection quick panel anchors to the clicked line of a multi-page selection and fits narrow screens',async({page})=>{
+  const token=await openLibrary(page),doc=await(await upload(page.request,token,readerPdf('Multi page quick toolbar',3))).json()
+  await page.goto(`/reader/${doc.id}`);await rendered(page);await zoom(page,100);await rendered(page)
+  await tool(page,'批注')
+  const second=page.locator('[data-page="2"] .textLayer span').first()
+  await page.locator('[data-page="2"]').scrollIntoViewIfNeeded();await rendered(page,2)
+  await second.scrollIntoViewIfNeeded()
+  await selection(page,1,2)
+  const at=await caret(second,4)
+  await page.mouse.click(at.x,at.y,{button:'right'})
+  const panel=page.getByRole('toolbar',{name:'选区批注快捷面板',exact:true})
+  await expect(panel).toBeVisible();await expect(panel).toHaveCSS('opacity','1')
+  const r=(await panel.boundingBox())!
+  expect(Math.max(r.y-at.y,at.y-r.y-r.height,0)).toBeLessThan(50)
+  await panel.getByRole('button',{name:'高亮',exact:true}).click();await saved(page,doc.id,1)
+  expect((await annotations(page,doc.id))[0].position.map((p:any)=>p.pageNumber)).toEqual([1,2])
+  await page.setViewportSize({width:390,height:844});await zoom(page,50);await rendered(page)
+  const narrow=await quickPanel(page),b=(await narrow.panel.boundingBox())!
+  expect(b.x).toBeGreaterThanOrEqual(0);expect(b.x+b.width).toBeLessThanOrEqual(390)
+  await narrow.panel.getByRole('button',{name:'下划线',exact:true}).click();await saved(page,doc.id,2)
+})

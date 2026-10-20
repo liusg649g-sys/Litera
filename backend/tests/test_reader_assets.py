@@ -214,3 +214,25 @@ def test_cleanup_between_ledger_and_file_cannot_resurrect_upload(logged,pdf):
     with SessionLocal() as db:
         row=db.scalar(select(ReaderAsset));assert row.status=='deleted'
         assert not reader_assets.asset_storage_path(row.storage_key).exists()
+
+
+@pytest.mark.parametrize('kind',['watermark','image','signature'])
+def test_insert_rotation_saved_updated_undo_and_bounds(logged,pdf,kind):
+    path='/api/v1/documents/'+upload(logged,pdf).json()['id']
+    value=object_data(kind,asset(logged,path)['assetId'] if kind!='watermark' else None)
+    value['geometry']['rotation']=37
+    created=logged.post(path+'/annotations',json=command(annotation=value))
+    assert created.status_code==201,created.text
+    a=created.json()['annotation']
+    assert a['geometry']['rotation']==37
+    changed={**a['geometry'],'rotation':-90}
+    edited=logged.patch(path+'/annotations/'+a['id'],json=command(1,version=a['version'],changes={'geometry':changed}))
+    assert edited.status_code==200,edited.text
+    assert logged.get(path+'/annotations').json()['items'][0]['geometry']['rotation']==-90
+    for angle in [-91,91,'30',True]:
+        invalid=object_data(kind,value['assetId']);invalid['geometry']['rotation']=angle
+        result=logged.post(path+'/annotations',json=command(2,annotation=invalid))
+        assert result.status_code==422,result.text
+    restored=logged.patch(path+'/annotations/'+a['id'],json=command(2,version=2,changes={'geometry':a['geometry']}))
+    assert restored.status_code==200,restored.text
+    assert restored.json()['annotation']['geometry']['rotation']==37

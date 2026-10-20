@@ -29,3 +29,7 @@ export async function logout() {
 export async function updateProfile(displayName: string) {
   auth.user = await api<User>('/users/me', { method: 'PATCH', body: JSON.stringify({ displayName }) }, auth.csrfToken)
 }
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await api<void>('/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }, auth.csrfToken)
+  clearAuth()
+}

@@ -1,10 +1,68 @@
 # 统一 API 与跨模块契约 v1（Change 01、02 A1/A2/B1 已实现，后续规划）
 
+## 修改本人密码（2026-10-20账号安全增量）
+
+`POST /api/v1/auth/password`，请求 `{currentPassword: string, newPassword: string}`。
+只允许当前账号；Cookie/Origin/CSRF缺失或失效沿用401/403；拒绝额外身份字段422。
+当前密码必填且≤128字符，新密码沿用注册规则（默认8–128 Unicode字符），不trim、不改变空格或Unicode。
+当前密码错误400 INVALID_CURRENT_PASSWORD（不触发全局401退出），新旧相同400 PASSWORD_UNCHANGED，
+长度/结构非法422；复用认证IP限流429。错误包络不回显明文密码。
+
+成功204，Argon2更新users.password_hash与updated_at，并在同一事务撤销本人所有未撤销sessions，
+清除当前会话Cookie。其他用户/文献/批注/资产不变，无新表/迁移。
+登录及修改密码以User行锁串行，修改时对Session再作当前读复验，防止等待期间已撤销的会话复用；
+旧密码登录不可在并发修改后新建有效会话。MySQL锁语义尚无真实集成证据，SQLite测试不能代替它。
+前端个人资料页独立账号安全区，页面内展开，验证确认密码，成功清空内存凭据并返回登录页提示重新登录。
+修改失败不假报成功，不持久化密码到URL/localStorage/sessionStorage；取消及卸载清空输入。
+实现和测试见[修改密码记录](../development/password-change.md)。
+
+## P3-C2 公共阅读接口（2026-10-17）
+
+正式接入说明及调用示例见 [Reader公共接口](reader-public-api.md)。源码为reader/context.ts、navigation.ts。
+新增page-change事件、可由AbortSignal注销的订阅、isReaderContextCurrent旧响应校验，提供真实annotationId。
+ReaderContext.pageNumber统一为当前阅读物理页；选区起始页改从selectionPosition[0].pageNumber取得。
+这是对下方A2历史“选区起始页”语义的明确修订。导航每次复用GET document权限校验，
+再通过活动阅读器的路由/草稿守卫与真实PDF页数/坐标校验。引用来源未接入返回unavailable。
+不新增HTTP端点、数据库字段或03–06业务实现。生产者02；03/04/06消费快照，05未来生产来源验证adapter。
+
+## P3-C1 导出契约（2026-10-17，用户验收通过；Chrome/Edge显示通过，Adobe未测试）
+
+生产者 `backend/app/pdf_exports.py`，消费者 `reader/export.ts`、ReaderPage/PdfExportStatus。
+不供03–06调用，无新DTO/数据库迁移。B1/B2保存接口与commandId规则保持不变。
+
+`POST /api/v1/documents/{id}/annotated-pdf`，请求JSON为
+`{expectedAnnotationRevision: integer >= 0}`，严格整数且拒绝未知字段。
+复用会话Cookie、Origin、X-CSRF-Token；创建与下载为同一受保护请求，
+成功200 `application/pdf`，UTF-8附件文件名 `原文件名_带批注.pdf`，
+`Cache-Control: no-store`、`Content-Length`、`X-Annotation-Revision`。
+没有公开URL/独立下载端点、没有异步作业或进度百分比。原件下载继续走content?download=true。
+
+文献锁内比对集合revision并复制PDF/图片/JSON快照，然后释放锁；后续编辑不进入当前快照。
+下载流开始前以新事务复验会话、文献归属/软删/purge状态；已发送字节无法撤回。
+原件不覆盖、不更新阅读时间。注释为原生Text/Contents/Popup及确定的气泡AP；其他对象保持内容叠加，不增加附录页，
+自由文本/水印另保留完整原生批注正文；不承诺第三方原生编辑。字体缺字明确返回422，不静默替代。
+
+| 错误 | 规则与恢复 |
+| --- | --- |
+| 401/403/404 | 失效会话、Origin/CSRF、非本人/软删/正在永久清理；沿用标准错误包络 |
+| 409 ANNOTATION_REVISION_CONFLICT | 已保存版本变化，details.annotationRevision；保留草稿，先人工核对/载入最新批注后重试，不自动覆盖 |
+| 422 ASSET_UNAVAILABLE / EXPORT_UNSUPPORTED_GLYPH / EXPORT_FAILED | 缺资产、字体缺字、损坏PDF或进程失败；原文献/草稿/资产不变，可修复再导出 |
+| 413 EXPORT_LIMIT / EXPORT_MEMORY_LIMIT / EXPORT_OUTPUT_LIMIT | 源50MiB、图片合计50MiB、快照16MiB/10000对象、1000页、子进程RSS512MiB、产物200MiB |
+| 429 EXPORT_BUSY | 每API进程仅1个导出/下载；稍后重试，无隐藏排队 |
+| 504 EXPORT_TIMEOUT / 503 EXPORT_RESOURCE_ERROR | 渲染60秒、临时资源不可用；可重试 |
+| 499 EXPORT_CANCELED | 服务端检测连接断开时终止；客户端Abort显示取消，不当成功 |
+
+流式下载另限120秒；前端75秒请求超时或用户取消触发Abort。失败/取消/发送结束回收
+私有临时副本；启动和每60秒扫描无活动父进程的目录，活动目录兜底TTL1小时。
+前端有未保存编辑/队列/图片放置时明确选择返回处理或仅导出已保存内容，保留全部草稿。
+统一下载下拉菜单分别提供带批注导出和原始PDF下载，附两行说明；窄屏批注抽屉使用同一菜单。导出状态为顶部居中浮动通知，不挤占阅读布局。
+详见 [ADR](adr-0007-annotated-pdf-export.md)、[测试及人工步骤](../development/p3-c1.md)。
+
 ## P3-B2 实现补充（2026-10-16）
 
-本节覆盖后文B1历史的“仅六类/资产未实现”限制。当前API开放全部13类，生产者 `backend/app/annotations.py`、`reader_assets.py`，消费者 `reader/annotations.ts`、`assets.ts`、`PdfDrawingObjects.vue`、`ReaderAssetManager.vue`、`AnnotationList.vue`。带批注导出仍未实现。
+本节覆盖后文B1历史的“仅六类/资产未实现”限制。当前API开放全部13类，生产者 `backend/app/annotations.py`、`reader_assets.py`，消费者 `reader/annotations.ts`、`assets.ts`、`PdfDrawingObjects.vue`、`ReaderAssetManager.vue`、`AnnotationList.vue`。C1导出契约见上节。
 
-- `geometry.kind='points'`用于ink，`{pageNumber,points:[{x,y}]}`，2–10000个页内归一化点且至少两个不同点；其余四种新增box对象和三插入使用box。circle后端按真实CropBox宽高验证等比；image/signature按资产真实宽高比验证，比例容差0.5%。仅watermark允许box.rotation为−90至90，其余box仍为0。watermark正文非空；零角度保留原B1整数0表示，避免旧commandId收据指纹改变。
+- `geometry.kind='points'`用于ink，`{pageNumber,points:[{x,y}]}`，2–10000个页内归一化点且至少两个不同点；其余四种新增box对象和三插入使用box。circle后端按真实CropBox宽高验证等比；image/signature按资产真实宽高比验证，比例容差0.5%。watermark/image/signature允许box.rotation为−90至90，按物理CropBox空间围绕box中心旋转，正角为顺时针；其余box仍为0。前端角度输入与滑块同步、步进1°；保持既有浮点角度读取兼容。watermark正文非空；零角度保留原B1整数0表示，避免旧commandId收据指纹改变。
 - image/signature必须有本人本篇有效assetId，其余类型assetId=null。PATCH增加assetId（仅图片/签名能非空），用于替换失效图片；完整几何、比例和归属重新校验。旧资产最后活动引用消失后延迟24小时回收；新资产关联、批注、revision和收据同事务提交。B1原有字段/版本/幂等/草稿规则沿用。
 - POST `/documents/{id}/reader-assets`：只接受一个multipart `file`，PNG/JPEG完整解码并规范化；201 `{assetId,mimeType,width,height,sizeBytes,status,attempts,errorCode}`。5MiB输入及输出、20M像素、单边16384、本篇未清理资产50MiB；超限413/422，格式或解码失败415。缺会话401，Origin/CSRF403，错文献/用户404。
 - GET `/documents/{id}/reader-assets`：`{items:ReaderAssetDTO[]}`，仅本人本篇未清理资产，供失败清理追踪。GET `/{assetId}/content`受保护二进制，不暴露路径，nosniff/no-store；错关联404，已知失效/过期422 `ASSET_UNAVAILABLE`。
@@ -12,7 +70,7 @@
 - 启动及每60秒扫描：未引用上传1小时、最后活动引用删除/替换后24小时；永久删除接原cleanup_jobs。超出租约的恢复明确422并保留本地草稿。视觉签名无密码学签署，水印仅当前页。
 - 图片确定被 `ASSET_UNAVAILABLE` 拒绝后可在原编辑栏更换图片，再创建新命令；网络未知结果仍核对原收据，不变更原prepared命令。现有409人工核对/导出备份策略保留。
 
-实现/实际测试及Windows升级步骤见 [P3-B2记录](../development/p3-b2.md)。真实MySQL专项未运行，用户实际UI验收待进行。
+实现/实际测试及Windows升级步骤见 [P3-B2记录](../development/p3-b2.md)。真实MySQL专项未运行；B2/C1用户实际UI已验收，C2未启动。
 
 
 ## P3-B1 实现约束（历史基础，2026-10-15）
@@ -93,7 +151,7 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 
 上传 DTO：title 初值由文件名（去扩展名）产生，authors=[]，未知元数据=null/[]，parseStatus=not_requested。重复错误 details 仅可包含本人 existingDocumentId、inTrash；若在回收站提示恢复，不悄悄重建。阶段 01 不调用任何解析或 AI。
 
-## Change 02：阅读、对象与导出（B1/B2已实现，导出待C1）
+## Change 02：阅读、对象与导出（B1/B2及C1代码已实现）
 
 2026-10-15以[02设计](../../openspec/changes/02-pdf-reader/design.md)为本模块细节来源。01的当前实现/历史段保留；以下不表示API已提供。前缀仍为/api/v1，复用会话、Origin/CSRF、错误包络与owner/有效文献过滤。
 
@@ -107,11 +165,11 @@ sort 允许 title、year、createdAt、lastReadAt，order=asc/desc；空年份/�
 | GET /documents/{id}/annotation-commands/{commandId} | 已确认MutationResult或404 COMMAND_NOT_FOUND | 超时核对，命令同事务入收据，保留24小时；过期须重读集合 |
 | POST /documents/{id}/reader-assets | multipart PNG/JPEG；→201 `{assetId,mimeType,width,height,sizeBytes}` | 同源防伪，真实解码/容量校验；不接受远程URL或SVG |
 | GET /documents/{id}/reader-assets/{assetId}/content | 二进制 | owner/document双重关联，不公开存储键 |
-| DELETE /documents/{id}/reader-assets/{assetId} | 未引用临时资产删除，204 | 已被对象/导出引用409；对象删除的回收由生命周期处理 |
+| DELETE /documents/{id}/reader-assets/{assetId} | 未引用临时资产删除，204 | 活动对象/撤销租约仍有效时409；导出使用独立副本，不延长原资产租约 |
 | GET /documents/{id}/progress | 扩展ProgressDTO | 旧null字段按continuous/fit-width读取 |
 | PUT /documents/{id}/progress | `{pageNumber?,zoom?,viewMode?,zoomMode?,version?,recordOpen?}` | 新状态写必须version；未读0、旧版本409；保留旧PUT {}仅记打开 |
 | GET /documents/{id}/content?download=true | 原始PDF | 复用01，不改原字节，不记阅读 |
-| 带批注导出协议（C1冻结路径） | 受保护POST接受`expectedAnnotationRevision`，下载快照PDF；若异步提供状态/取消/下载 | 不能提前视为可调用API；C1 ADR决定同步/作业协议，所有阶段复验权限 |
+| POST /documents/{id}/annotated-pdf | `{expectedAnnotationRevision}` | 200 PDF附件；同步/快照/安全限额详见本文件C1节 |
 
 MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；读取集合revision、对象version和写入baseRevision共同防并发丢失。相同commandId/相同请求返回原结果，内容不同409；事务失败不得留下部分对象/集合版本。客户端同文献串行写、补偿undo/redo也经这些接口，不仅改本地数组。草稿/在途/确认/失败分开；409保留本地并显式选择恢复/重放。
 
@@ -119,7 +177,7 @@ MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；
 
 对象/资产限额、坐标、幂等/收据保留、清理和导出资源预算见02设计。软删保留但普通访问404、恢复同ID，永久清理接原cleanup_jobs且失败可重试。导出仅已保存一致快照，不混合修订；“第三方可见”与“第三方可编辑”分开验收，不承诺全类型原生可编辑。
 
-上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；B2现已开放reader-assets与七种新对象，导出仍不可调用。B1当时输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
+上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；B2现已开放reader-assets与七种新对象，C1同步导出已实现，见顶部契约。B1当时输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
 
 ## Change 03–06：预期接口，全部待实现
 
@@ -222,7 +280,7 @@ interface AnswerDTO {
 }
 ```
 
-NormalizedRect 相对于 PDF 未旋转可见CropBox，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为选区起始页，未选中文本时 selectedText=''、selectionPosition=null。四种文本标记必须有非空rects；comment可页级或选区级。ink为自由手绘轨迹，highlight仅绑定真实文本选区。独立书签不属于02本次范围。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
+NormalizedRect 相对于 PDF 未旋转可见CropBox，以左上角为原点，x/y/width/height 位于 0–1，边界不能越出页面；缩放、设备像素比和旋转在 PDF.js 适配层转换，不持久化 CSS 像素。多页选区按页数组，ReaderContext.pageNumber 为当前阅读物理页，选区起始页从selectionPosition[0].pageNumber取得；未选中文本时 selectedText=''、selectionPosition=null。四种文本标记必须有非空rects；comment可页级或选区级。ink为自由手绘轨迹，highlight仅绑定真实文本选区。独立书签不属于02本次范围。手工及未形成批注的选段笔记 sourceId 可 null，选段须有 originalText/有效页码；翻译与AI笔记 sourceId 必须为本人同文献的 translationId/answerId。
 
 TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code point 计数，半开区间 `[startOffset,endOffset)`，不依赖 JS UTF-16 索引；跨页内容用多个 chunk 和多条引用表达。引用 pageNumber/quote 必须能在对应版本页文本核对，服务端校验证据，客户端不信任模型随意编造的页码。
 

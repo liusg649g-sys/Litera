@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nativeFullscreenEscape } from '../reader/fullscreen'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { startPointerResize } from '../resize'
 import { clampSidebar } from '../library'
@@ -26,11 +27,11 @@ onMounted(() => { window.addEventListener('resize', resized); void sync() })
 onBeforeUnmount(() => { stopDrag?.(); window.removeEventListener('resize', resized); dialog.value?.close() })
 </script>
 <template>
-  <dialog v-if="narrow" ref="dialog" class="reader-panel reader-panel-dialog" :style="width ? { width: width + 'px' } : undefined" :class="[side, { 'reader-panel-fixed': fixedContent }]" :aria-label="label" @cancel.prevent="emit('close')" @click="($event.target === dialog) && emit('close')">
-    <header><strong>{{ label }}</strong><button :aria-label="`关闭${label}`" @click="emit('close')">×</button></header><slot />
+  <dialog v-if="narrow" ref="dialog" class="reader-panel reader-panel-dialog" :style="width ? { width: width + 'px' } : undefined" :class="[side, { 'reader-panel-fixed': fixedContent }]" :aria-label="label" @cancel.prevent="!nativeFullscreenEscape() && emit('close')" @click="($event.target === dialog) && emit('close')">
+    <header><strong>{{ label }}</strong><slot name="header-actions" /><button :aria-label="`关闭${label}`" @click="emit('close')">×</button></header><slot />
   </dialog>
   <aside v-else v-show="open" class="reader-panel" :style="width ? { width: width + 'px' } : undefined" :class="[side, { 'reader-panel-fixed': fixedContent }]" :aria-label="label">
-    <header><strong>{{ label }}</strong><button :aria-label="`关闭${label}`" @click="emit('close')">×</button></header><slot />
+    <header><strong>{{ label }}</strong><slot name="header-actions" /><button :aria-label="`关闭${label}`" @click="emit('close')">×</button></header><slot />
   </aside>
   <div v-if="open && !narrow && resizable" class="reader-panel-resizer" role="separator" aria-label="调整文献导航宽度" aria-orientation="vertical" tabindex="0" :aria-valuenow="width || 240" :aria-valuemin="180" :aria-valuemax="320" @pointerdown="resize" @keydown="resizeKey" />
 </template>

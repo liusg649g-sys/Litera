@@ -41,11 +41,12 @@ test('SVG chevrons align; pointer arrows have no frame while Tab retains a visib
   const root=page.getByLabel('PDF 阅读区域',{exact:true})
   await root.click({position:{x:5,y:40}});await expect(root).toBeFocused();await page.keyboard.press('ArrowRight');await rendered(page,2)
   await expect(root).toHaveCSS('outline-style','none')
-  await page.getByRole('button',{name:'导出功能开发中',exact:true}).focus();await page.keyboard.press('Tab');await expect(root).toBeFocused();await expect(root).toHaveCSS('outline-style','solid')
+  await page.getByRole('button',{name:'下载 PDF',exact:true}).focus();await page.keyboard.press('Tab');await expect(root).toBeFocused();await expect(root).toHaveCSS('outline-style','solid')
   await page.keyboard.press('ArrowLeft');await rendered(page)
   const input=page.getByLabel('当前页码',{exact:true});await input.focus();await input.press('ArrowRight');await expect(input).toHaveValue('1')
   await root.click({position:{x:5,y:40}});await expect(root).toHaveCSS('outline-style','none')
   await page.getByRole('button',{name:'展开文献导航',exact:true}).click();await page.getByRole('button',{name:'大纲',exact:true}).click()
+  await page.getByRole('button',{name:'展开 Chapter',exact:true}).click()
   const toggle=page.getByRole('button',{name:'折叠 Chapter',exact:true}), zoom=page.getByRole('button',{name:'缩放预设',exact:true})
   for(const button of [toggle,zoom]) {
     const b=(await button.boundingBox())!,svg=(await button.locator('svg').boundingBox())!

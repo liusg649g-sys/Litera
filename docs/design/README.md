@@ -1,12 +1,14 @@
 # Litera 设计与规约索引
 
-日期：2026-10-14。项目：科研文献智能管理与协作平台，《互联网软件开发技术与实践》课程小组项目。
+更新时间：2026-10-20。项目：科研文献智能管理与协作平台，《互联网软件开发技术与实践》课程小组项目。
 
 [项目 README](../../README.md) · [六模块总览](../../openspec/changes/README.md)
 
-本目录为总体设计与规划索引。P1/P2-A/P2-B及UI优化已完成，用户已确认Change 01实际功能/UI验收通过，最新状态见[交接](../../HANDOFF.md)，历史证据见[P2-B记录](../development/p2-b.md)。专项MySQL自动化证据仍单独跟踪。PDF.js阅读器A1/A2已实现，其他成员模块待开发；artifact的done仅代表规划完成。
+本目录为总体设计与规划索引。P1/P2-A/P2-B及UI优化已完成，用户已确认Change 01实际功能/UI验收通过，最新状态见[交接](../../HANDOFF.md)，历史证据见[P2-B记录](../development/p2-b.md)。专项MySQL自动化证据仍单独跟踪。PDF.js阅读器A1/A2/B1/B2/C1已获用户验收，C2及后续反馈修正已实现、等待用户最终验收；03–06仍待开发，artifact的done仅代表规划完成。
 
 既有文献库布局优化历史见[P2-A UI记录](../development/p2-a-ui.md)。本轮P2-B在此布局上加入真实分类/筛选/历史/回收站，后端增量迁移与权限/清理状态同步实现；最新测试以P2-B记录为准。
+
+本轮功能、部署与手动上传见[2026-10-20交付索引](../development/2026-10-20-delivery.md)。
 
 ## 公共文档
 
@@ -15,10 +17,12 @@
 | [architecture.md](architecture.md) | B/S 技术链路、建议目录、部署、环境变量、Git 协作 |
 | [ui-guidelines.md](ui-guidelines.md) | 历次截图分析、15–25阅读参考、视觉/路由/搜索与批注面板 |
 | [api-contracts.md](api-contracts.md) | REST API、DTO、错误和跨模块事件 |
+| [reader-public-api.md](reader-public-api.md) | ReaderContext事件、取消订阅、版本校验和公共导航调用 |
 | [data-model.md](data-model.md) | 实体、关联、隔离、删除和提取版本 |
 | [module-dependencies.md](module-dependencies.md) | 六模块职责、依赖和接入边界 |
 | [delivery-plan.md](delivery-plan.md) | 页面开发顺序、进度、测试与验收 |
 | [decisions.md](decisions.md) | 重要设计建议与待确认项 |
+| [adr-0007-annotated-pdf-export.md](adr-0007-annotated-pdf-export.md) | C1技术验证、导出路线、字体/许可及资源决策 |
 | [validation.md](validation.md) | 本次 CLI 校验与覆盖核对结果 |
 
 ## 六个独立 change
@@ -26,7 +30,7 @@
 | Change | 负责人 | 规格能力 | 实现状态 |
 | --- | --- | --- | --- |
 | [01-literature-management](../../openspec/changes/01-literature-management/proposal.md) | Jensen Zhang | user-auth、literature-library | P1/P2-A/P2-B与UI已通过用户验收；33/34，专项MySQL补证待完成；未归档 |
-| [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | P3-A1用户已验收；P3-A2实现/测试见开发记录，等待本轮手动验收；B/C未开始 |
+| [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | A1/A2/B1/B2/C1用户已验收，C2开发及验证完成35/36，6.6用户实际验收待确认；Chrome/Edge仅保留C1确认范围，Adobe/MySQL专项未测试 |
 | [03-translation](../../openspec/changes/03-translation/proposal.md) | Siguo Liu | literature-translation | 待实现 |
 | [04-literature-notes](../../openspec/changes/04-literature-notes/proposal.md) | Siguo Liu | literature-notes | 待实现 |
 | [05-metadata-extraction](../../openspec/changes/05-metadata-extraction/proposal.md) | Jialu Ma | metadata-extraction | 待实现 |

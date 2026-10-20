@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { TextLayer } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import type { SearchMatch } from '../reader/search'
 import PdfAnnotations from './PdfAnnotations.vue'
+import PdfNativeComments from './PdfNativeComments.vue'
 import PdfDrawingObjects from './PdfDrawingObjects.vue'
 import { drawingTypes } from '../reader/objectGeometry'
 import type { ReaderAsset } from '../reader/assets'
@@ -16,6 +17,8 @@ const dimensions = computed(() => ({ width: props.size.width * props.scale, heig
 const highlights = ref<{ id: string; x: number; y: number; width: number; height: number }[]>([])
 const status = ref('等待渲染')
 const userUnit = ref(1)
+const resolutionLimited = ref(false)
+const renderedPage=shallowRef<PDFPageProxy>()
 let observer: IntersectionObserver | undefined, page: PDFPageProxy | undefined
 let renderTask: RenderTask | undefined, layer: TextLayer | undefined
 let generation = 0, disposed = false, wanted = false, running = false
@@ -55,6 +58,7 @@ function markMatches() {
 }
 
 function release() {
+  renderedPage.value=undefined
   generation++
   renderTask?.cancel(); layer?.cancel()
   text.value?.replaceChildren()
@@ -77,6 +81,7 @@ async function render() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2,
       8192 / viewport.width, 8192 / viewport.height,
       Math.sqrt(16_000_000 / (viewport.width * viewport.height)))
+    resolutionLimited.value = dpr + .001 < Math.min(window.devicePixelRatio || 1, 2)
     staging = document.createElement('canvas')
     staging.width = Math.ceil(viewport.width * dpr); staging.height = Math.ceil(viewport.height * dpr)
     status.value = '正在渲染'
@@ -98,6 +103,7 @@ async function render() {
     // Preserve it when committing the staged layer, including intrinsic PDF Rotate.
     container.setAttribute('data-main-rotation', stagedText.getAttribute('data-main-rotation') || '0')
     stagedText.remove()
+    renderedPage.value=page
     status.value = '已渲染'; await nextTick(); markMatches(); emit('ready', props.pageNumber)
   } catch (error) {
     if (!disposed && current === generation) { status.value = '渲染失败'; emit('failure', error) }
@@ -120,6 +126,7 @@ onMounted(() => {
   observer.observe(host.value!)
 })
 watch(() => props.scale, () => {
+  renderedPage.value=undefined
   generation++; renderTask?.cancel(); layer?.cancel(); highlights.value = []; status.value = '等待渲染'
   if (!wanted && canvas.value) { canvas.value.width = canvas.value.height = 0; text.value?.replaceChildren() }
   clearTimeout(zoomTimer); zoomTimer = setTimeout(() => { zoomTimer = undefined; if (wanted) void render() }, 100)
@@ -131,10 +138,15 @@ onBeforeUnmount(() => { disposed = true; wanted = false; clearTimeout(zoomTimer)
   <section ref="host" class="pdf-page" :data-page="pageNumber" :data-status="status"
     :aria-label="`第 ${pageNumber} 页`" :style="{ width: dimensions.width + 'px', height: dimensions.height + 'px', '--scale-factor': scale, '--user-unit': userUnit, '--total-scale-factor': scale * userUnit }" @pointerdown="pointerStart = { x: $event.clientX, y: $event.clientY }" @click="selectTextMark">
     <canvas ref="canvas" width="0" height="0" :aria-label="`PDF 第 ${pageNumber} 页画布`" />
+    <span v-if="resolutionLimited && status === '已渲染'" class="pdf-resolution-hint" title="保留当前阅读倍率；画布达到单页像素上限，缩小倍率可恢复设备原生采样。">当前画布已达分辨率上限</span>
     <div ref="text" class="textLayer" :style="{ visibility: status === '已渲染' ? 'visible' : 'hidden' }" @pointerdown="startTextSelection" @dragstart.prevent />
     <div class="pdf-search-layer" aria-hidden="true"><span v-for="(mark, i) in highlights" :key="i" :data-match="mark.id" :class="{ current: mark.id === selected }" :style="{ left: mark.x + 'px', top: mark.y + 'px', width: mark.width + 'px', height: mark.height + 'px' }" /></div>
+    <PdfNativeComments v-if="renderedPage" :page="renderedPage" :scale="scale" :enabled="!annotationTool && !editingActive" />
     <PdfAnnotations :pdf="pdf" :page-number="pageNumber" :scale="scale" :items="(annotations || []).filter(a=>!drawingTypes.includes(a.type))" :editor="annotationEditor?.type==='freeText' ? annotationEditor : null" :editor-locked="editorLocked" :editor-busy="editorBusy" :editing-active="editingActive" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationGroup==='批注'" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" @place="(p,x,y) => emit('annotationPlace',p,x,y)" @move="(id,g) => emit('annotationMove',id,g)" />
     <PdfDrawingObjects :pdf="pdf" :document-id="documentId" :page-number="pageNumber" :scale="scale" :items="annotations || []" :editor="annotationEditor" :selected="selectedAnnotation || ''" :tool="annotationTool || ''" :enabled="annotationEnabled || false" :group="annotationGroup || '阅读'" :locked="editorLocked" :busy="editorBusy" :editing-active="editingActive" :color="drawingColor" :line-width="drawingWidth" :opacity="drawingOpacity" :placement="placement" @select="emit('annotationSelect',$event)" @edit="emit('annotationEdit',$event)" @draft="emit('annotationDraft',$event)" @move="(id,g)=>emit('annotationMove',id,g)" @draw="(type,g)=>emit('annotationDraw',type,g)" @warning="emit('annotationWarning',$event)" @replace-asset="emit('annotationReplaceAsset')" @save="emit('annotationSave')" @cancel="emit('annotationCancel')" />
     <span v-if="status === '正在渲染'" class="pdf-page-loading" role="status" :aria-label="`正在加载第 ${pageNumber} 页`" />
   </section>
 </template>
+<style scoped>
+.pdf-resolution-hint { position:absolute; top:6px; left:6px; z-index:1; padding:3px 6px; border-radius:4px; background:var(--litera-page); color:var(--litera-muted); font-size:11px; pointer-events:none }
+</style>

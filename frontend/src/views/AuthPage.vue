@@ -78,6 +78,7 @@ async function submit() {
         <h2>{{ registerMode ? '创建你的账号' : '欢迎回到 Litera' }}</h2>
         <p class="card-subtitle">{{ registerMode ? '开启你的科研文献阅读之旅' : '登录后，进入你的个人科研空间' }}</p>
         <el-alert v-if="route.query.registered && !registerMode" title="注册成功，请使用你的邮箱和密码登录" type="success" :closable="false" show-icon />
+        <el-alert v-if="route.query.passwordChanged === '1' && !registerMode" title="密码已修改，请重新登录" type="success" :closable="false" show-icon />
         <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" show-icon role="alert" />
         <el-form ref="formRef" :model="form" :rules="rules" :validate-on-rule-change="false" label-position="top" :disabled="busy" @submit.prevent="submit">
           <el-form-item v-if="registerMode" label="显示名称" prop="displayName" for="display-name">

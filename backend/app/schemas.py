@@ -21,6 +21,10 @@ class LoginInput(InputModel):
     email: EmailStr = Field(max_length=254)
     password: SecretStr
 
+class PasswordChangeInput(InputModel):
+    current_password: SecretStr = Field(alias="currentPassword", min_length=1, max_length=128)
+    new_password: SecretStr = Field(alias="newPassword", min_length=8, max_length=128)
+
 class ProfileInput(InputModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=80)
 

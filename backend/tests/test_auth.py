@@ -149,3 +149,75 @@ def test_api_has_no_cache_or_secret_error_payloads(client):
     response = client.get("/api/v1/users/me")
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-request-id"] == response.json()["requestId"]
+
+
+def test_change_password_revokes_all_own_sessions_and_preserves_other_user(client):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.security import verify_password
+    first = register(client).json()
+    csrf = login(client).json()['csrfToken']
+    new_password = ' 新密码-Litera-456🙂 '
+    with TestClient(app, headers={'Origin': settings.public_origin}) as device, TestClient(app, headers={'Origin': settings.public_origin}) as other:
+        login(device)
+        other_user = register(other, 'other@example.com').json()
+        login(other, 'other@example.com')
+        response = client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf}, json={'currentPassword': PASSWORD, 'newPassword': new_password})
+        assert response.status_code == 204 and response.content == b''
+        assert 'max-age=0' in response.headers['set-cookie'].lower()
+        assert client.get('/api/v1/auth/session').status_code == 401
+        assert device.get('/api/v1/auth/session').status_code == 401
+        assert other.get('/api/v1/auth/session').status_code == 200
+        with SessionLocal() as db:
+            assert verify_password(db.get(User, first['id']).password_hash, new_password)
+            assert not verify_password(db.get(User, first['id']).password_hash, PASSWORD)
+            assert verify_password(db.get(User, other_user['id']).password_hash, PASSWORD)
+            assert all(s.revoked_at for s in db.scalars(select(LoginSession).where(LoginSession.user_id == first['id'])))
+        assert login(client).status_code == 401
+        assert client.post('/api/v1/auth/login', json={'email': 'reader@example.com', 'password': new_password}).status_code == 200
+
+
+@pytest.mark.parametrize('body,status,code', [
+    ({'currentPassword': 'incorrect', 'newPassword': 'new-password-123'}, 400, 'INVALID_CURRENT_PASSWORD'),
+    ({'currentPassword': PASSWORD, 'newPassword': PASSWORD}, 400, 'PASSWORD_UNCHANGED'),
+    ({'currentPassword': PASSWORD, 'newPassword': 'short'}, 422, 'VALIDATION_ERROR'),
+    ({'currentPassword': PASSWORD, 'newPassword': 'x' * 129}, 422, 'VALIDATION_ERROR'),
+    ({'currentPassword': '', 'newPassword': 'new-password-123'}, 422, 'VALIDATION_ERROR'),
+    ({'currentPassword': PASSWORD, 'newPassword': 'new-password-123', 'userId': 'someone'}, 422, 'VALIDATION_ERROR'),
+])
+def test_password_rejections_keep_password_and_session(client, body, status, code):
+    register(client); csrf = login(client).json()['csrfToken']
+    response = client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf}, json=body)
+    assert response.status_code == status
+    assert response.json()['error']['code'] == code
+    assert PASSWORD not in response.text and 'new-password-123' not in response.text
+    assert client.get('/api/v1/auth/session').status_code == 200
+    assert login(client).status_code == 200
+
+
+def test_password_requires_session_origin_csrf_and_rate_limit(client):
+    body = {'currentPassword': PASSWORD, 'newPassword': 'new-password-123'}
+    assert client.post('/api/v1/auth/password', json=body).status_code == 401
+    register(client); csrf = login(client).json()['csrfToken']
+    assert client.post('/api/v1/auth/password', json=body).status_code == 403
+    assert client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf, 'Origin': 'https://evil.example'}, json=body).status_code == 403
+    from app.main import auth_attempts
+    auth_attempts.clear()
+    previous = settings.auth_rate_limit
+    settings.auth_rate_limit = 1
+    try:
+        assert client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf}, json={**body, 'currentPassword': 'wrong'}).status_code == 400
+        assert client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf}, json=body).status_code == 429
+    finally:
+        settings.auth_rate_limit = previous
+
+
+def test_password_commit_failure_rolls_back_hash_and_revocations(client):
+    from unittest.mock import patch
+    from sqlalchemy.orm import Session
+    register(client); csrf = login(client).json()['csrfToken']
+    with patch.object(Session, 'commit', side_effect=RuntimeError('injected commit failure')):
+        response = client.post('/api/v1/auth/password', headers={'X-CSRF-Token': csrf}, json={'currentPassword': PASSWORD, 'newPassword': 'new-password-123'})
+    assert response.status_code == 500
+    assert client.get('/api/v1/auth/session').status_code == 200
+    assert login(client).status_code == 200
