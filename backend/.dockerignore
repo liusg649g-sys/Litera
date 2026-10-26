@@ -3,3 +3,14 @@ __pycache__
 .pytest_cache
 .env
 *.db
+
+.env.*
+!.env.example
+.secrets
+*.key
+*.pem
+*.db*
+*.sqlite*
+*.bak
+.cache
+storage

@@ -1,3 +1,4 @@
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from io import BytesIO
@@ -40,6 +41,7 @@ def test_upload_details_content_and_stable_id(logged, pdf):
     doc = response.json()
     assert doc["title"] == "论文" and doc["parseStatus"] == "not_requested"
     assert doc["authors"] == [] and doc["pageCount"] is None and doc["version"] == 1
+    assert doc["attachment"]["sha256"] == hashlib.sha256(pdf).hexdigest()
     assert "storageKey" not in str(doc) and "ownerId" not in str(doc)
     assert logged.get("/api/v1/documents/" + doc["id"]).json() == doc
     assert logged.get("/api/v1/documents").json()["items"] == [doc]
@@ -222,5 +224,59 @@ def test_upgrade_from_auth_preserves_user(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with isolated.connect() as conn:
         assert conn.execute(text("SELECT display_name FROM users WHERE id='existing'")).scalar() == "Existing"
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0006_reader_assets"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0008_user_model_profiles"
     isolated.dispose()
+
+@pytest.mark.parametrize("microseconds,stored_second", [(123456, 6), (654321, 7)])
+def test_upload_returns_database_normalized_timestamps(logged, pdf, monkeypatch, microseconds, stored_second):
+    """Real DB round trip with injected storage normalization, not a MySQL test.
+
+    SQLite preserves microseconds, so an after-insert SQL update deliberately
+    changes the stored value without synchronizing the ORM identity map.
+    Both rounding down and carrying into the next second must be read back.
+    """
+    from datetime import timezone
+    from sqlalchemy import event
+
+    incoming = datetime(2026, 10, 22, 12, 47, 6, microseconds, tzinfo=timezone.utc)
+    stored = datetime(2026, 10, 22, 12, 47, stored_second)
+
+    class UploadClock:
+        @staticmethod
+        def now(tz):
+            assert tz == timezone.utc
+            return incoming
+
+    def normalize_in_database(mapper, connection, target):
+        connection.execute(Document.__table__.update().where(Document.id == target.id)
+                           .values(created_at=stored, updated_at=stored))
+
+    monkeypatch.setattr(documents, "datetime", UploadClock)
+    event.listen(Document, "after_insert", normalize_in_database)
+    try:
+        response = upload(logged, pdf)
+    finally:
+        event.remove(Document, "after_insert", normalize_in_database)
+    assert response.status_code == 201
+    doc = response.json()
+    expected = stored.replace(tzinfo=timezone.utc).isoformat()
+    assert doc["createdAt"] == doc["updatedAt"] == expected
+    with SessionLocal() as db:
+        persisted = db.get(Document, doc["id"])
+        assert persisted.created_at == persisted.updated_at == stored
+        assert persisted.version == doc["version"] == 1
+    assert logged.get(f'/api/v1/documents/{doc["id"]}').json() == doc
+    assert logged.get('/api/v1/documents').json()["items"] == [doc]
+    assert logged.get(f'/api/v1/documents/{doc["id"]}/content').content == pdf
+
+
+def test_upload_refresh_failure_preserves_committed_document_and_pdf(logged, pdf):
+    """A failed post-commit read must not compensate by deleting a committed PDF."""
+    with patch("sqlalchemy.orm.Session.refresh", side_effect=OperationalError("refresh", {}, Exception("read failed"))):
+        assert upload(logged, pdf).status_code == 500
+    items = logged.get('/api/v1/documents').json()["items"]
+    assert len(items) == 1
+    doc = items[0]
+    assert logged.get(f'/api/v1/documents/{doc["id"]}').json() == doc
+    assert logged.get(f'/api/v1/documents/{doc["id"]}/content').content == pdf
+    assert upload(logged, pdf).status_code == 409

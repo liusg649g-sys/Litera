@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import DateTime, ForeignKey, String, Integer, BigInteger, JSON, Text, UniqueConstraint, Index
+from sqlalchemy import DateTime, LargeBinary, ForeignKey, String, Integer, BigInteger, JSON, Text, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
@@ -172,3 +172,42 @@ class ReaderAsset(Base):
     created_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
     # null while referenced; otherwise a recoverable lease for drafts/undo.
     expires_at: Mapped[datetime | None] = mapped_column(library_time)
+
+
+class Note(Base):
+    """Personal note identity is independent of any document association."""
+    __tablename__ = "notes"
+    __table_args__ = (Index("ix_notes_owner_updated", "owner_id", "updated_at", "id"), {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+    content_format: Mapped[str] = mapped_column(String(16), nullable=False, default="plain-text")
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sources: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+
+
+class NoteDocument(Base):
+    __tablename__ = "note_documents"
+    __table_args__ = (Index("ix_note_documents_owner_document", "owner_id", "document_id", "note_id"), {"mysql_engine": "InnoDB"})
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(library_time, nullable=False)
+
+
+class UserModelProfile(Base):
+    __tablename__ = 'user_model_profiles'
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+    owner_id: Mapped[str] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    revision: Mapped[str] = mapped_column(String(36), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    encrypted_key: Mapped[bytes | None] = mapped_column(LargeBinary)
+    encryption_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
+    tested_revision: Mapped[str | None] = mapped_column(String(36))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

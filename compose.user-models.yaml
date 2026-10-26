@@ -1,0 +1,14 @@
+# Optional Linux user-model vault. Review backups/migrations before applying.
+services:
+  api:
+    environment:
+      USER_MODELS_ENABLED: "true"
+      USER_MODEL_SECRET_BACKEND: aesgcm_file
+      USER_MODEL_MASTER_KEY_FILE: /run/secrets/user_model_master_key
+    secrets:
+      - source: user_model_master_key
+        target: user_model_master_key
+        mode: 0400
+secrets:
+  user_model_master_key:
+    file: ${USER_MODEL_MASTER_KEY_SOURCE:?Set an absolute private key-file path outside the repository}

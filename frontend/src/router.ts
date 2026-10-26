@@ -11,6 +11,7 @@ export const router = createRouter({
     { path: '/register', component: AuthPage, meta: { title: '注册' } },
     { path: '/library', component: LibraryPage, meta: { protected: true, title: '文献库' } },
     { path: '/reader/:documentId', component: () => import('./views/ReaderPage.vue'), meta: { protected: true, title: 'PDF 阅读器' } },
+    { path: '/settings/ai', component: () => import('./views/AiModelSettings.vue'), meta: { protected: true, title: 'AI 模型设置' } },
     { path: '/profile', component: ProfilePage, meta: { protected: true, title: '个人资料' } },
     { path: '/:pathMatch(.*)*', redirect: '/library' },
   ],

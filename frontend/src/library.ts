@@ -7,7 +7,7 @@ export interface DocumentDTO {
   id: string; title: string; authors: string[]; abstract: string | null; keywords: string[];
   year: number | null; journal: string | null; doi: string | null; folderId: string | null;
   tags: { id: string; name: string; color: string | null }[];
-  attachment: { originalName: string; sizeBytes: number; mimeType: string };
+  attachment: { originalName: string; sizeBytes: number; mimeType: string; sha256: string };
   parseStatus: string; extractionVersion: string | null; pageCount: number | null;
   version: number; createdAt: string; updatedAt: string; lastReadAt: string | null; deletedAt: string | null;
   cleanupJob: CleanupJobDTO | null;

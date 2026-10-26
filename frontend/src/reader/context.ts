@@ -1,11 +1,12 @@
 import { shallowReadonly, shallowRef } from 'vue'
 import { viewportToNormalized } from './state'
+import { pageTextMapping, textHasUnmappedCharacters, unreliableTextMessage } from './textQuality'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 export interface NormalizedRect { x: number; y: number; width: number; height: number; baseline?: number }
 export interface SelectionPosition { pageNumber: number; rects: NormalizedRect[]; textQuote: string; textRanges?: { item: number; start: number; end: number }[] }
 export interface Citation { documentId: string; extractionVersion: string; chunkId: string; pageNumber: number; quote: string }
 export interface NoteDraft { documentId: string; pageNumber: number | null; annotationId: string | null; title: string; content: string; sourceType: 'manual' | 'selection' | 'translation' | 'ai'; sourceId: string | null; originalText: string | null; translatedText: string | null; citations: Citation[] }
-export interface ReaderContext { documentId: string; pageNumber: number; selectedText: string; selectionPosition: SelectionPosition[] | null; annotationId: string | null; contextRevision: number }
+export interface ReaderContext { documentId: string; pageNumber: number; selectedText: string; selectionPosition: SelectionPosition[] | null; annotationId: string | null; contextRevision: number; textExtractionIssue?: string | null }
 export type ReaderEvent = 'context-change' | 'selection-change' | 'document-change' | 'page-change' | 'context-cleared'
 let revision = 0
 const currentContext = shallowRef<Readonly<ReaderContext> | null>(null)
@@ -27,17 +28,18 @@ export function publishContext(event: ReaderEvent, value?: Omit<ReaderContext, '
   window.dispatchEvent(new CustomEvent(`litera:reader:${event}`, { detail: snapshot }))
   for (const callback of listeners) { try { callback(event, snapshot) } catch (error) { console.warn('[Litera] ReaderContext subscriber failed', error) } }
 }
-export async function readSelection(pdf: PDFDocumentProxy, root: HTMLElement): Promise<{ selectedText: string; selectionPosition: SelectionPosition[] | null }> {
+export async function readSelection(pdf: PDFDocumentProxy, root: HTMLElement): Promise<{ selectedText: string; selectionPosition: SelectionPosition[] | null; textExtractionIssue?: string | null }> {
   const selection = window.getSelection()
   if (!selection || selection.isCollapsed || !selection.rangeCount || !root.contains(selection.anchorNode) || !root.contains(selection.focusNode)) return { selectedText: '', selectionPosition: null }
   const range = selection.getRangeAt(0).cloneRange(), positions: SelectionPosition[] = []
   // Intersect each text span, never include canvas, page margins or search UI.
-  let selectedText = ''
+  let selectedText = '', textExtractionIssue: string | undefined
   for (const element of root.querySelectorAll<HTMLElement>('.pdf-page')) {
     const spans = element.querySelectorAll<HTMLElement>('.textLayer span:not(.markedContent)'), rects: NormalizedRect[] = [], textRanges: NonNullable<SelectionPosition['textRanges']> = []
     let textQuote = ''
     if (![...spans].some(span => span.firstChild?.nodeType === Node.TEXT_NODE && range.intersectsNode(span.firstChild))) continue
     const number = Number(element.dataset.page), page = await pdf.getPage(number)
+    const mapping = await pageTextMapping(page)
     const bounds = element.getBoundingClientRect(), viewport = page.getViewport({ scale: bounds.width / page.getViewport({ scale: 1 }).width })
     for (const [item, span] of [...spans].entries()) {
       const node = span.firstChild
@@ -50,6 +52,8 @@ export async function readSelection(pdf: PDFDocumentProxy, root: HTMLElement): P
       if (part.collapsed || !part.toString()) continue
       const start = part.startContainer === node ? part.startOffset : 0
       const end = part.endContainer === node ? part.endOffset : node.textContent!.length
+      const textItem = Number(span.dataset.textItem ?? item)
+      if(mapping.fonts.has(mapping.items[textItem] ?? '') || textHasUnmappedCharacters(part.toString())) textExtractionIssue = unreliableTextMessage
       textRanges.push({ item: Number(span.dataset.textItem ?? item), start, end })
       textQuote += part.toString() + (span.nextSibling?.nodeName === 'BR' ? '\n' : '')
       for (const rect of part.getClientRects()) {
@@ -62,7 +66,7 @@ export async function readSelection(pdf: PDFDocumentProxy, root: HTMLElement): P
     }
     if (rects.length && textQuote.trim()) { positions.push({ pageNumber: number, rects: mergeTextRects(rects, page.view[2]! - page.view[0]!, page.view[3]! - page.view[1]!), textQuote: textQuote.trim(), textRanges }); selectedText += textQuote + '\n' }
   }
-  return { selectedText: selectedText.trim(), selectionPosition: positions.length ? positions : null }
+  return { selectedText: selectedText.trim(), selectionPosition: positions.length ? positions : null, ...(textExtractionIssue ? {textExtractionIssue} : {}) }
 }
 
 const fontMetrics = new Map<string, number>()

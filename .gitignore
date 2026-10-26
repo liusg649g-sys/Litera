@@ -15,3 +15,22 @@
 .cache/
 /storage/
 /backend/storage/
+
+# Private credentials, ciphertext backups and temporary DB sidecars
+.env.*
+!.env.example
+!**/.env.example
+.secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.bak
+*.db-journal
+*.sqlite-*
+*.sqlite3-*
+*.log

@@ -73,7 +73,7 @@ async function save() {
 <template>
   <div class="workspace">
     <header class="workspace-header"><Brand /><router-link to="/library">返回文献库</router-link></header>
-    <main class="profile-page"><h1>个人资料</h1><p class="muted">管理你的账号显示信息。</p>
+    <main class="profile-page"><h1>个人资料</h1><p><router-link to="/settings/ai">AI 模型设置</router-link></p><p class="muted">管理你的账号显示信息。</p>
       <section class="profile-card">
         <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" role="alert" />
         <el-alert v-if="saved" title="资料已保存" type="success" :closable="false" />

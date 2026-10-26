@@ -7,6 +7,19 @@ import Brand from '../components/Brand.vue'
 import WorkspaceTabs from '../components/WorkspaceTabs.vue'
 import PdfPage from '../components/PdfPage.vue'
 import ReaderPanel from '../components/ReaderPanel.vue'
+import TranslationPanel from '../components/TranslationPanel.vue'
+import NotesPanel from '../components/NotesPanel.vue'
+import SaveToNoteDialog from '../components/SaveToNoteDialog.vue'
+import MockAnswerPreview from '../components/MockAnswerPreview.vue'
+import { pdfNoteCapture } from '../reader/noteCapture'
+import type { NoteCaptureDraft } from '../notes/captures'
+import type { NoteDTO } from '../notes'
+const translationPanel = ref<InstanceType<typeof TranslationPanel>>()
+const notesPanel = ref<InstanceType<typeof NotesPanel>>()
+const translationOpen = ref(false), notesOpen = ref(false)
+const isolatedMockPreview=import.meta.env.VITE_LITERA_PREVIEW_MOCK==='true' || import.meta.env.VITE_LITERA_UNIFIED_ACCEPTANCE==='true'
+const captureDraft=shallowRef<NoteCaptureDraft|null>(null),capturePreparing=ref(false)
+let captureEpoch=0
 import PdfExportStatus from '../components/PdfExportStatus.vue'
 import PdfDownloadMenu from '../components/PdfDownloadMenu.vue'
 import FullscreenExitIcon from '../components/FullscreenExitIcon.vue'
@@ -29,7 +42,8 @@ import { createProgress } from '../reader/progress'
 import type { ReadingState } from '../reader/progress'
 import { clampZoom, fitZoom, PAGE_PADDING, PAGE_GAP } from '../reader/zoom'
 import { publishContext, readSelection, readerContext } from '../reader/context'
-import { registerReaderNavigation } from '../reader/navigation'
+import { registerReaderNavigation, registerReaderSourceReset } from '../reader/navigation'
+import type { SourceHighlightRequest, SourceHighlightResult } from '../reader/sourceHighlight'
 import { api } from '../api'
 import { exportAnnotatedPdf } from '../reader/export'
 import { CORNER_NOTICE_DURATION } from '../notifications'
@@ -41,8 +55,35 @@ import { readerTabs, openReaderTab, clearReaderTabs, pageGroup, adjacentPage } f
 import type { ViewMode, ZoomMode } from '../reader/state'
 import { createPdfTask, pdfError, pdfStatus } from '../reader/pdf'
 import '../reader/reader.css'
+import '../reader/extensions.css'
 const route = useRoute(), router = useRouter()
 const pdf = shallowRef<PDFDocumentProxy>(), viewport = ref<HTMLElement>()
+watch([()=>String(route.params.documentId),()=>auth.user?.id],()=>{captureEpoch++;captureDraft.value=null})
+async function openCapture(draft:NoteCaptureDraft) {
+  if(capturePreparing.value || captureDraft.value)return
+  // The selected source is frozen before focus/async save changes the DOM selection.
+  const snapshot=JSON.parse(JSON.stringify(draft)),owner=auth.user?.id,documentId=String(route.params.documentId),attempt=++captureEpoch
+  if(snapshot.source.kind==='pdf_excerpt' && snapshot.source.documentId!==documentId){notice.value='请在译文对应文献中打开保存操作，来源已保留。';return}
+  capturePreparing.value=true
+  try{
+    if(!notesPanel.value || !await notesPanel.value.prepareForInsert()){
+      notice.value='请先确认笔记服务可用，并保存当前笔记或处理保存错误。';return
+    }
+    if(attempt!==captureEpoch || owner!==auth.user?.id || documentId!==String(route.params.documentId))return
+    captureDraft.value=snapshot
+  }finally{capturePreparing.value=false}
+}
+function capturePdf(){
+  const result=pdfNoteCapture(readerContext.value,active.value?.title || '未命名文献',String(route.params.documentId))
+  if(!result.draft){notice.value=result.error;return}
+  void openCapture(result.draft)
+}
+async function captured(note:NoteDTO){
+  captureDraft.value=null
+  const accepted=await notesPanel.value?.afterCapture(note)
+  notice.value=accepted?'已保存到笔记。来源与原文已保留。':'摘录已保存；请重新打开笔记查看，当前未保存编辑没有被覆盖。'
+}
+
 const keyboardFocus = ref(false)
 const loading = ref(true), failure = ref(''), count = ref(0), pageInput = ref('1')
 const active = computed(() => readerTabs.find(item => item.id === String(route.params.documentId)))
@@ -320,6 +361,50 @@ let generation = 0, resource: ReturnType<typeof createPdfTask> | undefined
 let metadataRequest: AbortController | undefined
 let scrollFrame = 0, leaving = false, fullFallback = false
 let layoutFrame = 0, layoutRevision = 0, suppressScroll = false
+const sourceHighlight=shallowRef<SourceHighlightRequest|null>(null)
+let sourceHighlightSequence=0
+let pendingSourceHighlight:{token:number;finish:(result:SourceHighlightResult)=>void}|undefined
+function clearSourceHighlight(){
+  sourceHighlightSequence++
+  sourceHighlight.value=null
+  const pending=pendingSourceHighlight
+  pending?.finish({token:pending.token,pageNumber:0,status:'page-only',reason:'定位请求已取消。'})
+}
+function waitForSourceHighlight(position:SourceHighlightRequest['position'],signal:AbortSignal){
+  const token=++sourceHighlightSequence
+  sourceHighlight.value={token,position:JSON.parse(JSON.stringify(position))}
+  return new Promise<SourceHighlightResult>(resolve=>{
+    let settled=false
+    const timer=setTimeout(()=>finish({token,pageNumber:position.pageNumber,status:'page-only',reason:'等待 PDF 文字层超时。'}),10000)
+    const aborted=()=>finish({token,pageNumber:position.pageNumber,status:'page-only',reason:'定位请求已取消。'})
+    function finish(result:SourceHighlightResult){
+      if(settled)return
+      settled=true;clearTimeout(timer);signal.removeEventListener('abort',aborted)
+      if(pendingSourceHighlight?.token===token)pendingSourceHighlight=undefined
+      if(result.status==='page-only' && sourceHighlight.value?.token===token)sourceHighlight.value=null
+      resolve(result)
+    }
+    pendingSourceHighlight={token,finish}
+    signal.addEventListener('abort',aborted,{once:true})
+    if(signal.aborted)aborted()
+  })
+}
+async function sourceLocated(result:SourceHighlightResult){
+  const pending=pendingSourceHighlight
+  if(!pending || pending.token!==result.token || sourceHighlight.value?.token!==result.token)return
+  if(result.status==='exact'){
+    await nextTick()
+    if(pendingSourceHighlight?.token!==result.token || sourceHighlight.value?.token!==result.token)return
+    const root=viewport.value,marks=root?.querySelectorAll<HTMLElement>(`[data-source-highlight-token="${result.token}"]`)
+    if(!root || !marks?.length){pending.finish({...result,status:'page-only',reason:'临时高亮未能显示。'});return}
+    const boxes=[...marks].map(mark=>mark.getBoundingClientRect()),bounds=root.getBoundingClientRect()
+    const left=Math.min(...boxes.map(box=>box.left)),right=Math.max(...boxes.map(box=>box.right))
+    const top=Math.min(...boxes.map(box=>box.top)),bottom=Math.max(...boxes.map(box=>box.bottom))
+    root.scrollTop+=(top+bottom)/2-(bounds.top+root.clientHeight/2)
+    root.scrollLeft+=(left+right)/2-(bounds.left+root.clientWidth/2)
+  }
+  pending.finish(result)
+}
 let resizeObserver: ResizeObserver | undefined, fitRevision = 0, selectionRevision = 0, anchorRevision = 0
 const ready = ref(false)
 let navigating = false, jumpRevision = 0, loadedDocumentId = ''
@@ -336,6 +421,7 @@ function pageReady(number: number) {
 }
 async function beforeLeave() {
   if (!auth.user) return true
+  if (notesPanel.value && !(await notesPanel.value.beforeLeave())) { notice.value = '笔记尚未保存，请先重试或处理冲突后离开。'; return false }
   const tab = readerTabs.find(t => t.id === loadedDocumentId)
   if (tab) tab.panels = { leftOpen: leftOpen.value, rightOpen: rightOpen.value, leftPanel: leftPanel.value, rightPanel: rightPanel.value, leftWidth: leftWidth.value }
   if (annotations.value?.state.phase === 'loading' && sessionStorage.getItem(`litera:annotations:${auth.user.id}:${route.params.documentId}`)) { notice.value = '请等待批注草稿加载并处理后再关闭。'; return false }
@@ -346,7 +432,7 @@ async function beforeLeave() {
 }
 onBeforeRouteLeave(beforeLeave)
 onBeforeRouteUpdate(beforeLeave)
-watch([group, leftOpen, rightOpen, leftWidth, notice, () => progress.value?.status.error], async () => {
+watch([group, leftOpen, rightOpen, leftWidth, translationOpen, notesOpen, notice, () => progress.value?.status.error], async () => {
   const root = viewport.value, token = generation, revision = ++layoutRevision, page = current.value, navigationRevision = jumpRevision
   if (!root || !pdf.value) return
   const node = root.querySelector<HTMLElement>(`[data-page="${page}"]`)
@@ -415,7 +501,7 @@ watch([current, mode], ([, value], [, previous]) => {
   if (!pdf.value || loadedDocumentId !== String(route.params.documentId)) return
   const selected = readerContext.value
   if (value !== previous) { window.getSelection()?.removeAllRanges(); context() }
-  else if (selected?.selectedText) publishContext('page-change', { documentId: loadedDocumentId, pageNumber: current.value, selectedText: selected.selectedText, selectionPosition: selected.selectionPosition, annotationId: selectedObject.value?.version ? selectedObject.value.id : null })
+  else if (selected?.selectedText) publishContext('page-change', { documentId: loadedDocumentId, pageNumber: current.value, selectedText: selected.selectedText, selectionPosition: selected.selectionPosition, textExtractionIssue: selected.textExtractionIssue, annotationId: selectedObject.value?.version ? selectedObject.value.id : null })
   else context('page-change')
   // Native multi-page selection must survive auto-scroll across mixed page sizes.
   if (value === previous && mode.value === 'continuous' && window.getSelection()?.isCollapsed === false) return
@@ -443,6 +529,7 @@ watch(group, value => { selectedAnnotation.value = ''; annotationTool.value = ''
 function openRight(name: string) { if (editor.value && name!=='批注列表') { editingBlocked(); return }; rightPanel.value = name; rightOpen.value = true }
 async function load(full = false) {
   const token = ++generation, id = String(route.params.documentId)
+  clearSourceHighlight()
   suppressScroll = false; layoutRevision++; cancelAnimationFrame(layoutFrame)
   group.value = '阅读';assetError.value='';retryFile.value=null
   metadataRequest?.abort(); metadataRequest = new AbortController()
@@ -602,6 +689,7 @@ function pointerFocus(event: PointerEvent) { keyboardFocus.value = false; if (!e
 watch(() => route.params.documentId, () => { fullFallback = false; void load() }, { immediate: true })
 watch(() => auth.user, (user, previous) => {
   if (!user || user.id !== previous?.id) {
+    clearSourceHighlight()
     annotations.value?.dispose(true); editor.value = null; progress.value?.dispose(true); publishContext('context-cleared'); generation++; metadataRequest?.abort(); clearReaderTabs(); pdf.value = undefined; count.value = 0
     loading.value = false; failure.value = '登录身份已变更，请重新打开文献'
     const old = resource; resource = undefined
@@ -609,6 +697,7 @@ watch(() => auth.user, (user, previous) => {
   }
 })
 function beforeUnload(event: BeforeUnloadEvent) { if (progress.value?.status.dirty || annotations.value?.state.dirty || editor.value || placement.value || signatureOpen.value || assetBusy.value || retryFile.value) { void progress.value?.flush(); void annotations.value?.flush(); event.preventDefault(); event.returnValue = '' } }
+const stopSourceReset=registerReaderSourceReset(clearSourceHighlight)
 const stopNavigation = registerReaderNavigation(async (target, signal) => {
   if (editor.value || placement.value || signatureOpen.value || assetBusy.value || retryFile.value) {
     editingBlocked()
@@ -633,6 +722,13 @@ const stopNavigation = registerReaderNavigation(async (target, signal) => {
     await navigateAnnotation(item)
   } else {
     jump(target.pageNumber)
+    if(target.fileSha256){
+      if(!target.position)return {status:'ok',precision:'page',message:`已打开来源文献 PDF 第 ${target.pageNumber} 页；当前来源只能定位到页面。`}
+      const result=await waitForSourceHighlight(target.position,signal)
+      if(leaving || signal.aborted || loadedDocumentId!==target.documentId)return {status:'error',code:'STALE_CONTEXT',message:'阅读上下文已失效'}
+      if(result.status==='exact')return {status:'ok',precision:'exact',message:`已精确定位来源文献 PDF 第 ${target.pageNumber} 页的原文。`}
+      return {status:'ok',precision:'page',message:`已打开来源文献 PDF 第 ${target.pageNumber} 页；${result.reason || '当前来源只能定位到页面。'}`}
+    }
     const rect = target.position?.rects[0]
     if (rect) {
       const token = generation, page = await pdf.value.getPage(target.pageNumber)
@@ -651,7 +747,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(() => { const revision = ++fitRevision; requestAnimationFrame(() => { if (revision === fitRevision && !leaving && !fullscreenTransitioning.value) fit() }) }); if (viewport.value) resizeObserver.observe(viewport.value)
 })
 onBeforeUnmount(() => {
-  stopNavigation(); assetUploadController?.abort()
+  stopNavigation();stopSourceReset();clearSourceHighlight();assetUploadController?.abort()
   leaving = true; generation++; metadataRequest?.abort(); cancelAnimationFrame(scrollFrame); cancelAnimationFrame(layoutFrame)
   window.getSelection()?.removeAllRanges()
   progress.value?.dispose(); publishContext('context-cleared'); resizeObserver?.disconnect(); viewport.value?.removeEventListener('wheel', wheel)
@@ -667,6 +763,8 @@ onBeforeUnmount(() => {
     <PdfCommentPopup :document-id="String(route.params.documentId)" />
     <div class="reader-brandbar-slot" :inert="fullscreen" :aria-hidden="fullscreen"><header class="reader-brandbar"><Brand /><span class="reader-caption">PDF 阅读器</span><nav><router-link to="/library">返回文献库</router-link><router-link to="/profile">{{ auth.user?.displayName }}</router-link></nav></header></div>
     <WorkspaceTabs />
+    <p v-if="isolatedMockPreview" class="reader-notice" role="status">P3 隔离预览：翻译使用 Mock 测试数据，非真实模型；5177 的原有数据不在此环境。</p>
+    <MockAnswerPreview v-if="isolatedMockPreview" :document-id="String(route.params.documentId)" @save-to-note="openCapture" />
     <PdfSelectionToolbar v-if="pdf && viewport" :key="String(route.params.documentId)" :root="viewport" :document-id="String(route.params.documentId)" :color="annotationColor" :enabled="group==='批注' && !loading && annotations?.state.phase!=='loading' && !editor && !assetBusy && !placement && !signatureOpen && !retryFile && !annotationTool" @choose="quickSelectionAction" @color="quickSelectionColor" />
     <div class="reader-fullscreen-tools">
     <div class="reader-main-toolbar" aria-label="阅读工具栏">
@@ -683,6 +781,9 @@ onBeforeUnmount(() => {
         <el-tooltip :append-to="readerRoot" content="搜索文献" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="搜索文献" @click="openRight('搜索')"><Search /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" content="批注列表" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="批注列表" @click="openRight('批注列表')"><ChatLineSquare /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" :content="fullscreen?'退出全屏':'全屏阅读'" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150"><button :aria-label="fullscreen?'退出全屏':'全屏阅读'" :aria-pressed="fullscreen" :disabled="fullscreenPending || fullscreenTransitioning" @click="toggleFullscreen"><component :is="fullscreen?FullscreenExitIcon:FullScreen" /></button></el-tooltip>
+        <button title="展开或收起翻译面板；实时模式展开后会继续翻译" aria-label="翻译面板" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="translationPanel?.toggle()">面板</button><button title="翻译当前 PDF 选区并展开面板，与面板内翻译按钮相同" aria-label="翻译所选文字" style="width:auto;min-width:44px;padding:4px 6px" :disabled="translationPanel?.busy" @pointerdown.prevent @click="translationPanel?.translate()">翻译</button>
+        <button aria-label="笔记面板" title="独立展开或收起文献笔记" :aria-pressed="notesOpen" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="notesPanel?.toggle()">笔记</button>
+        <button aria-label="添加到笔记" title="保存可靠 PDF 选区到新笔记或已有笔记" style="width:auto;min-width:44px;padding:4px 6px" :disabled="!pdf || capturePreparing || !!captureDraft" @pointerdown.prevent @click="capturePdf">摘录</button>
         <PdfDownloadMenu :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" />
       </div>
     </div>
@@ -707,14 +808,19 @@ onBeforeUnmount(() => {
         <div v-if="loading" class="reader-status" role="status"><span class="reader-spinner" /><h1>正在加载 PDF</h1><p>正在读取受保护的文献内容…</p></div>
         <div v-else-if="failure" class="reader-status" role="alert"><Document /><h1>无法打开文献</h1><p>{{ failure }}</p><p v-if="progress?.status.dirty">本地未同步阅读设置已保留，恢复文献后可处理。</p><div><el-button @click="fullFallback = false; load()">重试加载</el-button><el-button @click="router.push('/library')">返回文献库</el-button></div></div>
         <div v-else-if="pdf && viewport" class="pdf-pages" :class="mode" :key="String(route.params.documentId)">
-          <PdfPage v-for="number in pages" :key="`${String(route.params.documentId)}-${mode}-${number}`" :pdf="pdf" :document-id="String(route.params.documentId)" :drawing-color="annotationColor" :drawing-width="drawingWidth" :drawing-opacity="drawingOpacity" :placement="placement" :page-number="number" :root="viewport" :scale="scale" :size="sizes[number - 1]!" :matches="matchesByPage.get(number) || []" :selected="selectedMatch" :annotations="annotations?.state.items || []" :annotation-editor="editor && (editor.type==='freeText' || drawingTypes.includes(editor.type)) ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" :editing-active="!!editor" :selected-annotation="selectedAnnotation" :annotation-tool="group!=='阅读' ? annotationTool : ''" :annotation-enabled="group!=='阅读'" :annotation-group="group" @annotation-draw="drawingCreated" @annotation-warning="notice=$event" @annotation-replace-asset="pickAsset(editor?.type==='signature' ? 'signature' : 'image')" @annotation-select="selectAnnotation" @annotation-place="placeAnnotation" @annotation-move="moveAnnotation" @annotation-edit="item => openEditor(item,false)" @annotation-draft="updateEditor" @annotation-save="saveEditor" @annotation-cancel="cancelEditor" @ready="pageReady" @failure="fail" />
+          <PdfPage v-for="number in pages" :key="`${String(route.params.documentId)}-${mode}-${number}`" :pdf="pdf" :document-id="String(route.params.documentId)" :drawing-color="annotationColor" :drawing-width="drawingWidth" :drawing-opacity="drawingOpacity" :placement="placement" :page-number="number" :root="viewport" :scale="scale" :size="sizes[number - 1]!" :matches="matchesByPage.get(number) || []" :selected="selectedMatch" :source-highlight="sourceHighlight?.position.pageNumber===number ? sourceHighlight : null" :annotations="annotations?.state.items || []" :annotation-editor="editor && (editor.type==='freeText' || drawingTypes.includes(editor.type)) ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" :editing-active="!!editor" :selected-annotation="selectedAnnotation" :annotation-tool="group!=='阅读' ? annotationTool : ''" :annotation-enabled="group!=='阅读'" :annotation-group="group" @source-locate="sourceLocated" @annotation-draw="drawingCreated" @annotation-warning="notice=$event" @annotation-replace-asset="pickAsset(editor?.type==='signature' ? 'signature' : 'image')" @annotation-select="selectAnnotation" @annotation-place="placeAnnotation" @annotation-move="moveAnnotation" @annotation-edit="item => openEditor(item,false)" @annotation-draft="updateEditor" @annotation-save="saveEditor" @annotation-cancel="cancelEditor" @ready="pageReady" @failure="fail" />
         </div>
       </div>
       </div>
       <ReaderPanel :open="rightOpen" side="right" :label="rightPanel" :fixed-content="rightPanel === '批注列表'" :non-modal="rightPanel==='批注列表'" @close="closeRight"><template #header-actions><PdfDownloadMenu v-if="rightPanel==='批注列表'" class="pdf-export-panel-menu" :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" /></template><PdfExportStatus v-if="pdf && rightPanel==='批注列表'" :phase="exportPhase" :error="exportError" :conflict="exportConflict" @resolve="resolveExportDraft" @start="startExport" @cancel="cancelExport" @retry="requestExport" @reload="reloadExportSnapshot" /><PdfSearch v-if="pdf" v-show="rightPanel === '搜索'" :key="String(route.params.documentId)" :pdf="pdf" :selected="selectedMatch" @matches="matches = $event; selectedMatch = ''" @navigate="navigateMatch" /><AnnotationList v-if="annotations" v-show="rightPanel === '批注列表'" :items="annotations.state.items" :editor="editor?.type==='comment' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" @draft="updateEditor" @save="saveEditor" @cancel="cancelEditor" :has-backup="annotations.state.hasBackup" :has-pending="annotations.state.dirty && !annotations.state.error" @save-pending="annotations.flush" @export-backup="annotations.exportDraft" :document-id="String(route.params.documentId)" :selected="selectedAnnotation" @select="navigateAnnotation" @edit="openEditor" @remove="removeAnnotation" /></ReaderPanel>
+      <section v-show="translationOpen || notesOpen" class="reader-extension-panels" :class="{ 'translation-open': translationOpen, 'notes-open': notesOpen }" aria-label="阅读扩展面板">
+        <TranslationPanel ref="translationPanel" @update:open="translationOpen = $event" @save-to-note="openCapture" />
+        <NotesPanel ref="notesPanel" :document-id="String(route.params.documentId)" @update:open="notesOpen = $event" />
+      </section>
     </div>
     <dialog ref="editorDialog" class="annotation-editor" aria-labelledby="annotation-editor-title" @cancel.prevent="!nativeFullscreenEscape() && cancelEditor()"><header><strong id="annotation-editor-title">{{ editorNew ? '创建批注' : '编辑批注' }}</strong></header>
       <form v-if="editor && !['comment','freeText',...drawingTypes].includes(editor.type)" @submit.prevent="saveEditor"><p>{{ annotationLabels[editor.type] }} · 第 {{ editor.pageNumber }} 页</p><label v-if="['comment','freeText'].includes(editor.type)">正文<textarea v-model="editor.content" aria-label="批注正文" maxlength="20000" rows="4" autofocus required /></label><p v-else class="annotation-editor-quote">{{ editor.selectedText }}</p><div class="annotation-editor-colors" role="group" aria-label="批注颜色选择"><span>颜色</span><button v-for="color in annotationColors" :key="color" type="button" class="reader-color" :style="{ '--swatch': color }" :aria-label="`编辑批注颜色 ${color}`" :aria-pressed="editor.color.toUpperCase()===color" :title="color" @click="editor.color=color" /><label>自定义<input v-model="editor.color" aria-label="编辑批注颜色" type="color"></label></div><label>透明度<input v-model.number="editor.style.opacity" aria-label="批注透明度" type="number" min="0.05" max="1" step="0.05" required></label><label v-if="editor.type==='freeText'">字号 (pt)<input v-model.number="editor.style.fontSize" aria-label="批注字号" type="number" min="6" max="144" required></label><label v-if="['underline','squiggly','strikeout'].includes(editor.type)">线宽 (pt)<input v-model.number="editor.style.lineWidth" aria-label="批注线宽" type="number" min="0.25" max="20" step="0.25" required></label><div class="annotation-editor-actions"><el-button @click="cancelEditor">取消</el-button><el-button type="primary" native-type="submit">保存批注</el-button></div></form>
     </dialog>
+    <SaveToNoteDialog :draft="captureDraft" :preferred-note="notesPanel?.currentNote || null" :owner-id="auth.user?.id || ''" @close="captureDraft=null" @captured="captured" />
   </main>
 </template>

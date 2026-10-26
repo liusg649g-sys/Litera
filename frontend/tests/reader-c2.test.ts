@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { publishContext, readerContext, isReaderContextCurrent, subscribeReaderContext } from '../src/reader/context'
-import { navigateReader, registerReaderNavigation, registerCitationResolver } from '../src/reader/navigation'
+import { navigateReader, registerReaderNavigation, registerReaderSourceReset, registerCitationResolver } from '../src/reader/navigation'
 afterEach(() => { vi.unstubAllGlobals(); publishContext('context-cleared') })
 const value = { documentId: 'a', pageNumber: 2, selectedText: '', selectionPosition: null, annotationId: 'ann' }
 it('cancels subscriptions and rejects old A responses after A→B→A; keeps annotation and physical page', () => {
@@ -37,4 +37,29 @@ it('rechecks context after asynchronous permission lookup and never forwards a s
   const operation = navigateReader({documentId:'a',pageNumber:2}, {context:snapshot})
   publishContext('document-change', {...value,documentId:'b'}); publishContext('document-change', value); release()
   expect(await operation).toMatchObject({code:'STALE_CONTEXT'}); expect(handler).not.toHaveBeenCalled(); stop()
+})
+
+it('validates the saved PDF digest and known page count before invoking the reader host',async()=>{
+ const digest='a'.repeat(64),fetcher=vi.fn(async()=>new Response(JSON.stringify({id:'a',pageCount:3,attachment:{sha256:digest}})))
+ vi.stubGlobal('fetch',fetcher)
+ const handler=vi.fn(async()=>({status:'ok' as const})),stop=registerReaderNavigation(handler)
+ try{
+  expect(await navigateReader({documentId:'a',pageNumber:2,fileSha256:digest})).toEqual({status:'ok'})
+  expect(handler).toHaveBeenLastCalledWith({documentId:'a',pageNumber:2,fileSha256:digest},expect.any(AbortSignal))
+  expect(await navigateReader({documentId:'a',pageNumber:2,fileSha256:'b'.repeat(64)})).toMatchObject({code:'SOURCE_VERSION_MISMATCH',message:expect.stringContaining('无法可靠定位来源')})
+  expect(await navigateReader({documentId:'a',pageNumber:4,fileSha256:digest})).toMatchObject({code:'INVALID_PAGE',message:expect.stringContaining('无法可靠定位来源')})
+  expect(await navigateReader({documentId:'a',pageNumber:1,fileSha256:''})).toMatchObject({code:'INVALID_SOURCE'})
+  expect(handler).toHaveBeenCalledTimes(1)
+ }finally{stop()}
+})
+it('clears a previous temporary source highlight before validating a new source request',async()=>{
+ const digest='a'.repeat(64),reset=vi.fn(),stopReset=registerReaderSourceReset(reset)
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({id:'a',pageCount:3,attachment:{sha256:digest}}))))
+ const stop=registerReaderNavigation(async()=>({status:'ok',precision:'page'}))
+ try{
+  await navigateReader({documentId:'a',pageNumber:2,fileSha256:digest})
+  expect(reset).toHaveBeenCalledTimes(1)
+  await navigateReader({documentId:'a',pageNumber:0,fileSha256:digest})
+  expect(reset).toHaveBeenCalledTimes(2)
+ }finally{stop();stopReset()}
 })

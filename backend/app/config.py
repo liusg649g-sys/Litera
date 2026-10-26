@@ -2,11 +2,16 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 from pathlib import Path
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    user_models_enabled: bool = False
+    user_model_secret_backend: Literal["auto", "windows_dpapi", "aesgcm_file"] = "auto"
+    user_model_master_key_file: str = ""
+    translation_mock_enabled: bool = False
+    unified_acceptance: bool = False
     app_env: Literal["development", "test", "production"] = "development"
     database_url: str
     public_origin: str = "http://localhost:8080"
@@ -35,3 +40,36 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings():
     return Settings()
+
+
+class ModelSettings(BaseSettings):
+    """Developer-local AI configuration, separate from all business and DB settings."""
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+    provider: str = Field(default="openai_compatible", validation_alias=AliasChoices("AI_PROVIDER", "TRANSLATION_PROVIDER"))
+    base_url: str = Field(default="", validation_alias=AliasChoices("AI_BASE_URL", "TRANSLATION_BASE_URL"))
+    model: str = Field(default="", validation_alias=AliasChoices("AI_MODEL", "TRANSLATION_MODEL"))
+    api_key: SecretStr | None = Field(default=None, repr=False, validation_alias=AliasChoices("AI_API_KEY", "TRANSLATION_API_KEY"))
+    verified: bool = Field(default=False, validation_alias=AliasChoices("AI_MODEL_VERIFIED", "TRANSLATION_MODEL_VERIFIED"))
+
+    max_output_tokens: int = Field(default=2048, ge=16, le=4096, validation_alias="AI_MAX_OUTPUT_TOKENS")
+
+    # Compatibility for existing translation callers/configuration, not a second key store.
+    @property
+    def translation_provider(self): return self.provider
+    @property
+    def translation_base_url(self): return self.base_url
+    @property
+    def translation_model(self): return self.model
+    @property
+    def translation_api_key(self): return self.api_key
+    @property
+    def translation_model_verified(self): return self.verified
+
+@lru_cache
+def get_model_settings():
+    import os
+    path = Path(__file__).resolve().parents[1] / ".env"
+    return ModelSettings(_env_file=None if (os.environ.get("APP_ENV") == "test" or os.environ.get("LITERA_DISABLE_DEVELOPER_MODEL") == "1") else path)
+
+TranslationSettings = ModelSettings
+get_translation_settings = get_model_settings

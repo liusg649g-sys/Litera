@@ -229,3 +229,12 @@ app.include_router(create_annotation_router(current_session, require_csrf))
 
 app.include_router(create_asset_router(current_session, require_csrf))
 app.include_router(create_export_router(current_session, require_csrf))
+
+from .translations import create_translation_router
+app.include_router(create_translation_router(require_csrf))
+
+from .notes import create_note_router
+app.include_router(create_note_router(current_session, require_csrf))
+
+from .user_models import create_user_model_router
+app.include_router(create_user_model_router(current_session, require_csrf))

@@ -106,7 +106,7 @@ def document_dto(doc, attachment, db=None):
         "folderId": doc.folder_id, "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in tags],
         "cleanupJob": {"jobId": job.id, "status": job.status, "errorCode": job.error_code} if job else None,
         "attachment": {"originalName": attachment.original_name, "sizeBytes": attachment.size_bytes,
-                       "mimeType": attachment.mime_type},
+                       "mimeType": attachment.mime_type, "sha256": attachment.sha256},
         "parseStatus": doc.parse_status, "extractionVersion": doc.extraction_version,
         "pageCount": doc.page_count, "version": doc.version,
         "createdAt": iso(doc.created_at), "updatedAt": iso(doc.updated_at),
@@ -199,6 +199,8 @@ def save_upload(file, owner_id, db, folder_id=None):
         published = storage_path(attachment.storage_key)
         os.replace(temporary, published)
         db.commit()
+        # Return database-normalized timestamps (MySQL DATETIME has second precision).
+        db.refresh(doc)
         return document_dto(doc, attachment, db)
     except Exception as error:
         db.rollback()

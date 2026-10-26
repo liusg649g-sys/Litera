@@ -3,3 +3,14 @@ dist
 playwright-report
 test-results
 .env
+
+.env.*
+!.env.example
+.secrets
+*.key
+*.pem
+*.db*
+*.sqlite*
+*.bak
+.cache
+storage

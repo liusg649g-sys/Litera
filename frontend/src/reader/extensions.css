@@ -1,0 +1,20 @@
+/* Independent extension sidebars. Scoped to their shared host; base reader panels keep their layout. */
+.reader-extension-panels{display:flex;flex:0 0 auto;min-width:0;min-height:0;position:relative;width:320px}
+.reader-extension-panels.translation-open.notes-open{width:640px}
+.reader-extension-panels .reader-panel{position:relative!important;inset:auto!important;width:320px!important;max-width:100%!important;height:100%!important;max-height:100%!important;min-height:0;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+.reader-extension-panels .reader-panel-dialog:not([open]){display:none!important}
+.reader-extension-panels .reader-panel>header{position:static;flex-shrink:0}
+.reader-extension-panels .translation-content,.reader-extension-panels .notes-content{flex:1;min-height:0;overflow:auto;box-sizing:border-box}
+@media(min-width:1100px) and (max-width:1699px){
+ .reader-extension-panels,.reader-extension-panels.translation-open.notes-open{position:absolute;right:0;top:0;bottom:0;width:320px;z-index:13;flex-direction:column;box-shadow:-4px 0 16px #0002}
+ .reader-extension-panels .reader-panel{width:100%!important;flex:1 1 0;height:0!important}
+ .reader-extension-panels.translation-open.notes-open .reader-panel{max-height:50%!important}
+}
+@media(max-width:1099px){
+ .reader-extension-panels,.reader-extension-panels.translation-open.notes-open{position:absolute;right:0;left:0;top:auto;bottom:0;width:100%;height:52dvh;max-height:75%;z-index:13;flex-direction:column;box-shadow:0 -4px 16px #0002}
+ .reader-extension-panels.translation-open.notes-open{height:60dvh}
+ .reader-extension-panels .reader-panel{position:relative!important;inset:auto!important;flex:1 1 0;width:100%!important;height:0!important;max-width:100%!important;margin:0;box-shadow:none!important}
+ .reader-extension-panels.translation-open.notes-open .reader-panel{max-height:50%!important}
+ .reader-body:has(.reader-extension-panels.translation-open)>.pdf-reading-region .pdf-viewport,.reader-body:has(.reader-extension-panels.notes-open)>.pdf-reading-region .pdf-viewport{padding-bottom:52dvh}
+ .reader-body:has(.reader-extension-panels.translation-open.notes-open)>.pdf-reading-region .pdf-viewport{padding-bottom:60dvh}
+}
