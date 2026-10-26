@@ -4,7 +4,18 @@
 
 项目围绕文献管理、PDF 阅读、翻译、笔记、信息提取和 AI 问答组织六个模块，使用 Litera 自有品牌及北大红主题。
 
-## 当前进度
+## 翻译与笔记：已验收，GitHub交付待确认（2026-10-26）
+
+功能3/4及个人模型已在统一5183完成用户五项验收。包含手动/实时双向翻译、模型设置/安全存储、笔记M:N/自动保存/来源块/搜索/PDF跳页与精确高亮；AI回答保存目前为已验收的固定Mock适配，真实QA由06负责人提供。当前所有改动仍未提交/推送。
+
+- [GitHub交付范围、测试与PR方案](docs/delivery/github-delivery.md)
+- [Windows/Linux安全部署、主密钥和迁移](docs/delivery/deployment.md)
+- [QA/提取与共享模型团队接口](docs/delivery/team-integration.md)
+- [本地统一验收历史](docs/development/final-translation-notes-delivery.md)
+
+0007/0008仅增量新增笔记及个人模型表，须联合备份/独立副本验证后由部署者执行；Windows保留DPAPI，Linux可配置独立主密钥文件AES-GCM，无明文回退。真实MySQL、Linux镜像构建及真实QA仍未执行，不与用户界面验收或Mock混淆。下面2026-10-20进度为上游历史，不代表03/04当前未实现。
+
+## 2026-10-20上游进度（历史）
 
 本轮最终实现、各批实际测试、暂缓需求及Windows CMD手动GitHub上传步骤，统一见
 [2026-10-20交付索引](docs/development/2026-10-20-delivery.md)。

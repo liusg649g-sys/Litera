@@ -1,6 +1,19 @@
 # Tasks
 
-负责人：Siguo Liu。状态：待实现。本清单仅规划，全部实现/验证项未勾选；本次不实现翻译服务。
+负责人：Siguo Liu。当前本地功能已实现并完成用户统一验收（2026-10-26，5183五项通过）；尚未提交GitHub。下方原1/2节保留上游规划及历史证据要求，不可据其旧勾选判定功能未实现。
+
+## 当前交付状态（以源码与证据为准）
+
+| 检查项 | 实现/验收状态 | 依据 |
+|---|---|---|
+| 中英词/句/段、手动/实时500ms、折叠/来源/复制 | 已实现；用户P2及统一验收通过 | TranslationPanel/createTranslation、test_translations/translation*.test/e2e |
+| 超时/429/旧请求/乱码/断词/双用户隔离 | 已实现，隔离自动化回归通过 | ai_service、translations、pdf_text/text_quality及专项测试 |
+| 当前/历史译文保存到笔记 | 已实现；P3-B及统一验收通过 | note_captures、translation_proof、SaveToNoteDialog |
+| 个人模型/安全存储/权限/SSRF | 已实现；Windows交互已统一验收，Linux文件Vault本轮隔离验证 | Change07、model_secrets/model_network/user_models |
+| 真实模型验证 | 用户在网页自行配置并完成统一验收；Codex不读取Key或编造逐次网关结果 | 用户声明；本轮自动化仍全部Mock |
+| 真实MySQL/Linux Docker/QA联调 | 本轮未执行；不因Mock或离线DDL通过标为真实通过 | docs/delivery/github-delivery.md |
+
+## 上游规划与阶段历史（原文保留）
 
 ## 1. 待实现：翻译服务与契约
 
@@ -17,3 +30,16 @@
 ## Workflow follow-up
 
 - 完成真实验收后再依用户指令同步/归档；本批规约完成不改变待实现状态。
+
+
+## 2026-10-22 用户P2指令实施记录
+
+上文为原规划，现按用户新指令实现选区翻译而不建历史表、不接笔记业务。后端可配置适配器、权限/CSRF接口，前端手动/实时500ms/取消去重/独立侧栏/复制已落地，详见docs/development/p2-translation.md及统一交接报告。真实模型配置和验收尚缺，不将1.1、2.3或整个Change03标为完成；原笔记接入不在本轮范围，未自动sync/archive。测试通过情况按实际交接记录，不把Mock称作真实翻译。
+
+## 2026-10-26 本地完整交付的状态澄清
+
+上述“待实现”清单是原GitHub规划，不能据此判定当前源码未实现。P2用户人工验收已通过；当前本地包含统一服务层、手动/实时500ms、双向翻译、复制/异常/旧结果保护、原文映射和保守断词、签名来源回执，以及P3-B当前/历史译文保存和笔记联动。服务端签名回执代替未授权的持久翻译历史表设计。
+
+本轮以Change07补齐个人模型设置与单站显式Mock/个人模型。接口/前端/权限与来源测试使用临时SQLite和受控Mock；新个人模型真实质量/网关状态由用户在网页自行配置验证，不读取开发者.env、不代发真实调用。原清单1.1/2.3涉及真实模型的项目不因Mock通过自动勾选，真实MySQL与真实QA也不据此宣告完成。
+
+源码和实际本轮证据统一见docs/development/final-translation-notes-delivery.md及上级LITERA_HANDOFF.md本轮追加记录；不自动sync/archive，不开发旋转/OCR/跨页扩展。

@@ -1,3 +1,5 @@
+> 翻译/笔记当前实现（2026-10-26）：下文Change03/04目标DTO含上游规划，实际请求使用translations.TranslationInput、notes与note_captures的扁平鉴权接口；译文以translationProof签名关联，不存在持久translationId表。当前已实现API/错误与QA未接边界见[团队接口](../delivery/team-integration.md)。新增attachment.sha256为兼容字段，旧消费者可忽略；不得按旧NoteDraft单文献结构覆盖M:N来源块。
+
 # 统一 API 与跨模块契约 v1（Change 01、02 A1/A2/B1 已实现，后续规划）
 
 ## 修改本人密码（2026-10-20账号安全增量）
@@ -179,21 +181,24 @@ MutationResult=`{commandId,annotationRevision,annotation:AnnotationDTO|null}`；
 
 上表中 B1 的 annotations CRUD、restore 和收据查询现已实现；B2现已开放reader-assets与七种新对象，C1同步导出已实现，见顶部契约。B1当时输入只接受 highlight/underline/squiggly/strikeout/comment/freeText，schemaVersion=1、assetId=null。具体校验及错误见末尾B1实现说明。
 
-## Change 03–06：预期接口，全部待实现
+## Change 03–06：历史目标接口（03已实现见翻译契约；04本轮基础接口见下文，05–06仍待实现）
 
 | 模块/方法/路径 | 输入 | 输出/约束 |
 | --- | --- | --- |
 | 03 POST /documents/{id}/translations | `{context:ReaderContext,sourceLanguage:'zh'|'en',targetLanguage:'zh'|'en',text}` | `{translationId,documentId,pageNumber,sourceText,translatedText,sourceLanguage,targetLanguage,contextRevision}`；空文本/同语言422 |
-| 04 POST /notes | NoteDraft | 201 NoteDTO；关联权限及来源校验 |
-| 04 GET /notes | `q,documentId?,page,pageSize` | 本人笔记分页；按内容/标题搜索 |
-| 04 GET、PATCH、DELETE /notes/{noteId} | PATCH `{title?,content?,version}` | DTO/204；版本冲突409 |
+| 04 POST /notes | `{id:UUID,title,content,documentId?}` | 201 NoteDTO；同UUID完全相同首次创建重放200；不接受任意来源 |
+| 04 GET /notes | `documentId?,title?,page,pageSize` | 本人笔记分页；title仅供目标选择，不是全文搜索，q不支持 |
+| 04 GET /notes/search | `q,page,pageSize` | P3-C1本人已保存笔记关键词搜索；标题/正文/PDF原文/译文，唯一笔记分页与有限安全摘要 |
+| 04 GET、PATCH、DELETE /notes/{noteId} | PATCH `{title?,content?,version}`；DELETE `?version=N` | DTO/204；版本冲突409 |
+| 04 GET /notes/config | 无 | 只读能力检查：available、titleMaxLength、contentMaxLength、contentFormat；不创建表 |
+| 04 PUT、DELETE /notes/{noteId}/documents/{documentId} | 空请求体 | 关联/解除关联均200 NoteDTO；集合幂等，不删除正文 |
 | 05 POST /documents/{id}/extractions | 无；用户显式重试 | 202 `{jobId,documentId,status}`；同文件版本运行中返回原作业 |
 | 05 GET /documents/{id}/extractions/latest | 无 | ExtractionResult 或 404；未完成返回明确状态 |
 | 05 GET /extraction-jobs/{jobId} | 无 | 作业 DTO，归属验证；错误可重试 |
 | 05 GET /documents/{id}/text | `extractionVersion,pageNumber?` | `{documentId,extractionVersion,pages:ExtractedPage[]}`；无该版本404 |
 | 06 POST /documents/{id}/qa | `{mode:'summary'|'analysis'|'question',question?,context:ReaderContext}` | AnswerDTO；question 模式必须非空；context.documentId 必须等于路径 |
 
-05 人工校正通过 01 的 PATCH /documents/{id}，提交 version 和明确选中的候选字段；不另造不兼容题录写接口。06 初版返回完整响应，暂不规定 SSE；未来加流式接口需单独补契约。03/06 来源结果只供当前用户使用，04 保存 NoteDraft 时验证 sourceId 的所属文献/用户，禁止伪关联。
+05 人工校正通过 01 的 PATCH /documents/{id}，提交 version 和明确选中的候选字段；不另造不兼容题录写接口。06 初版返回完整响应，暂不规定 SSE；未来加流式接口需单独补契约。03/06 来源结果只供当前用户使用，04 P3-A 不接受 NoteDraft 或来源写入；未来 P3-B 插入来源时再验证 sourceId 的所属文献/用户。
 
 ## 核心 DTO（TypeScript 文档示例）
 
@@ -208,7 +213,7 @@ interface DocumentDTO {
   id: string; title: string; authors: string[]; abstract: string | null;
   keywords: string[]; year: number | null; journal: string | null; doi: string | null;
   folderId: string | null; tags: TagDTO[];
-  attachment: { originalName: string; sizeBytes: number; mimeType: 'application/pdf' };
+  attachment: { originalName: string; sizeBytes: number; mimeType: 'application/pdf'; sha256: string };
   parseStatus: ParseStatus; extractionVersion: string | null;
   pageCount: number | null; version: number;
   createdAt: string; updatedAt: string; lastReadAt: string | null; deletedAt: string | null;
@@ -299,3 +304,32 @@ TextChunk 只跨一个物理页，offset 按提取页文本的 Unicode code poin
 ### P3-B1选区精度兼容补充（2026-10-16）
 
 SelectionPosition的每页对象新增可选`textRanges: [{item,start,end}]`，item为PDF.js TextLayer文本item索引，start/end为该item中UTF-16字符偏移，左闭右开，严格整数、item/start>=0且end>start，最多2000段。原rect可选`baseline`为字体升部/完整行框比例（有限0–1）；原x/y/width/height规则不变。四类文本标记共用这些字段，geometry.positions与position仍须完全一致。缺省时不序列化新字段、不强制补null，旧对象/命令墓碑与恢复仍兼容，非法范围422。字段直接存原JSON，不新增表/列/迁移；端点精度来自当前原生Range，不从摘要反推。保存接口/CAS/commandId/收据及权限无变化。
+
+## P3-A 笔记基础接口（2026-10-23）
+
+实现位置 `backend/app/notes.py:create_note_router`、`frontend/src/notes.ts`。独立 NoteDTO 包含 id/title/content/contentFormat/version/sourceSchemaVersion/sources/createdAt/updatedAt/documents，其中 documents 为本人有效关联文献的 id/title；列表返回摘要省略 content/sources。sources 当前固定空数组。旧 ReaderContext/NoteDraft 保持兼容，P3-B 才启用来源插入。
+
+所有接口要求登录；写接口复用 Origin+CSRF。当前用户必须同时拥有笔记及目标文献，跨用户请求404；不信任前端owner字段。未迁移时config.available=false，其他接口503 NOTES_NOT_READY；旧API没有路由时前端把404解释为“笔记尚未部署”，禁止CRUD。
+
+标题1–200字符、纯文本正文最多100000字符。PATCH 的version必须匹配数据库版本；完全相同内容的重复提交可安全返回当前结果，冲突409 NOTE_VERSION_CONFLICT，不覆盖新数据。DELETE全局删除需version，解除单文献关联与全局删除为两个不同接口。正文并发CAS、关联唯一键和事务锁分别保护更新。
+
+本次为可选增量接口，无旧数据库结构变更；新增0007只在隔离测试环境先验证，真实5177升级和重启须用户确认。
+## P3-B 结构化笔记摘录（2026-10-23）
+
+P3-A 的普通笔记 CRUD、权限和版本契约保持不变；`PATCH /notes/{id}` 仍不接受 `sources`。新增认证只读接口 `GET /api/v1/notes/capture-config`，返回来源格式版本与长度、块数、总大小限制；旧 `/notes/config` 响应不变。
+
+`POST /api/v1/notes/captures` 使用会话、Origin 和 CSRF 校验。请求携带稳定 `operationId`、目标 `noteId`、已有笔记版本或新笔记标题、明确的 `link|keep` 关联选择，以及 `pdf_excerpt|translation_excerpt` 来源快照。新建笔记与首块、明确关联在同一事务完成；已有笔记使用共享版本 CAS。完全相同操作重放返回 200 且不重复追加，首次成功返回 201；改变内容后复用操作 ID、版本冲突或 UUID 冲突返回 409。越权按既有规范返回 404。
+
+服务端从源文献记录派生标题和文件 SHA256，并核对实际 PDF 页文字、异常字符和字体映射。客户端位置数据只作为经过边界检查的页级定位元数据，本阶段不承诺精确坐标跳转。保存失败不创建半条笔记，也不回显密钥、内部堆栈或敏感配置。
+
+翻译响应原有 `source` 保持兼容，顶层新增 `translationProof={version,issuedAt,signature,provenance}`。域分离 HMAC 绑定用户、文献文件版本、页码、原文、译文、方向、上下文版本和可选规范化模型输入，有效期 24 小时。保存时验签，不再次调用模型，不持久化签名。测试环境只能签发 `isolated_mock`，不能冒充真实模型结果；旧的无回执译文仍可显示，但不能作为可信译文保存。
+
+个人笔记列表新增可选 `title` 标题子串过滤并沿用分页；它不是 P3-C 全文搜索。
+
+## P3-C1 笔记关键词搜索（2026-10-25）
+
+`GET /api/v1/notes/search?q=&page=&pageSize=`要求登录且只读。查询去除首尾空白后最长100字符，空查询返回空页；分页默认20、上限50，未知/重复参数422。服务端只读取当前owner的Note行，按标题、正文和受支持sources块的originalText/translatedText做Unicode字面量部分匹配，英文不区分大小写；`%`、`_`、引号和正则字符没有特殊查询含义。
+
+响应按笔记ID唯一，不因note_documents多对多关系重复。每项为既有NoteSummary加最多6个matches；match包含field/label、最长约160字符snippet、matchStart/matchEnd、安全省略标志和可用的sourceBlockId/documentId/pageNumber。响应不包含完整content/sources。结果按updatedAt倒序/id稳定分页；关联文献仍来自既有owner过滤DTO。
+
+当前为跨SQLite/MySQL JSON表示的应用层只读匹配，不新增迁移、索引或AI依赖。大规模账号性能和数据库全文索引另立变更；本阶段不搜索sessionStorage草稿、整篇PDF或未知来源块。

@@ -1,3 +1,5 @@
+> 当前状态（2026-10-26）：文献翻译及与笔记联动已实现并通过用户统一验收；本文后续包含上游历史设计。实际扁平API、签名回执、个人模型与测试边界见tasks.md、docs/design/api-contracts.md和docs/delivery/github-delivery.md；不把旧NoteDraft/translationId规划当当前已实现接口。
+
 # Proposal
 
 ## Why

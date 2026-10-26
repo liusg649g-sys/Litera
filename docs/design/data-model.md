@@ -73,7 +73,8 @@ MySQL，utf8mb4；ID 建议 UUID 字符串；时间用 UTC DATETIME(6)，API 转
 | annotation_command_receipts | owner/document/commandId唯一、请求指纹、结果/修订号、过期时间；幂等/在途核对 | 02 B1 |
 | reader_assets | owner/document、私有key、mime/hash/像素尺寸/引用/租约/过期状态；PNG/JPEG | 02 B2 |
 | translation_results | ownerId、documentId、pageNumber、source/targetLanguage、sourceText、translatedText | 03，支持后续 Note sourceId |
-| notes | ownerId、documentId、pageNumber nullable、annotationId nullable、title、content、sourceType、sourceId nullable、originalText、translatedText、citations JSON、version | 04 |
+| notes | 独立UUID、owner_id、title、content、content_format、version、source_schema_version、sources JSON、created_at/updated_at；无document_id | 04 P3-A实现（部署待确认） |
+| note_documents | (note_id,document_id)复合主键、owner_id、created_at；两个外键均仅级联删除关联行 | 04 P3-A多对多关联 |
 | extraction_jobs | ownerId、documentId、fileHash、status、attempts、errorCode、versionId；同文件版本最多一个活动作业 | 05 |
 | extraction_results | ownerId、documentId、extractionVersion、fileHash、metadata JSON、fieldSources JSON、warnings JSON；(documentId,extractionVersion) UNIQUE | 05 |
 | document_pages | ownerId、documentId、extractionVersion、pageNumber、text；(documentId,extractionVersion,pageNumber) UNIQUE | 05 |
@@ -83,7 +84,7 @@ MySQL，utf8mb4；ID 建议 UUID 字符串；时间用 UTC DATETIME(6)，API 转
 
 02对象目标为13类：B1六类+手绘+三形状+三插入。2026-10-16取消独立荧光笔；当前业务API只接受B1六类，此调整不改数据库结构或已有记录。
 
-翻译结果与问答答案作为可保存来源，暂不规划会话历史/多轮聊天页面；具体保留时长待配置决定。sourceType/sourceId 的多态关系由服务层校验，不伪称数据库可以用单个外键关联多张表。annotation 删除后 notes.annotationId SET NULL，保留笔记中的原文快照。首次阶段不提前创建 03–06 表。
+翻译结果与问答答案作为可保存来源，暂不规划会话历史/多轮聊天页面；具体保留时长待配置决定。sourceType/sourceId 的多态关系由服务层校验，不伪称数据库可以用单个外键关联多张表。旧方案的 notes.annotationId / documentId 不用于 P3-A；来源扩展使用独立版本化 sources，P3-A 固定空数组，不开放来源插入。笔记与文献通过 note_documents 关联，解除关联或永久删除文献保留笔记本体。仅本次 0007 创建 notes/note_documents，不提前创建其他规划表。
 
 ```mermaid
 erDiagram
@@ -95,7 +96,9 @@ erDiagram
   TAGS ||--o{ DOCUMENT_TAGS : labels
   DOCUMENTS ||--o{ READING_PROGRESS : read
   DOCUMENTS ||--o{ ANNOTATIONS : marked
-  DOCUMENTS ||--o{ NOTES : noted
+  USERS ||--o{ NOTES : owns
+  NOTES ||--o{ NOTE_DOCUMENTS : linked
+  DOCUMENTS ||--o{ NOTE_DOCUMENTS : references
   DOCUMENTS ||--o{ EXTRACTION_RESULTS : parsed
   EXTRACTION_RESULTS ||--o{ DOCUMENT_PAGES : pages
   DOCUMENT_PAGES ||--o{ DOCUMENT_CHUNKS : chunks
@@ -143,3 +146,22 @@ annotation_command_receipts以(document_id,command_id)复合主键、owner索引
 ### B1选区JSON兼容增强（2026-10-16）
 
 annotations原position/geometry JSON容纳可选逐item字符范围textRanges和rect.baseline字体比例；schemaVersion仍1，无新迁移/列/表，原记录不批量改写。基线比例仅辅助线条显示，原归一化CropBox矩形仍为几何锚点；旧对象缺省比例0.8。API范围约束见契约末节。既有集合/对象版本、命令收据、墓碑恢复、归属和生命周期保持原规则。
+
+## P3-A 笔记增量边界（2026-10-23）
+
+`0007_literature_notes` 只新增上述两表和索引，不改旧表或 PDF。SQLite 外键需继续启用；MySQL 正文采用 MEDIUMTEXT，时间采用 DATETIME(6)，JSON 不使用服务端默认值。应用显式写入 sources=[] / source_schema_version=1，正文以纯文本保存和转义显示。正文 version 用 CAS，关联操作不变更正文版本。
+
+文献软删仅隐藏对应入口，恢复后同一关联继续可用；永久删除仅级联移除关联。无关联笔记可从本人笔记库重新关联。笔记全局删除需要独立确认且移除全部关联。
+
+真实开发库迁移需要用户另行确认；MySQL DDL 可能非事务提交，失败应停止检查实际表/版本，不自动降级、删表或覆盖恢复。downgrade 主动拒绝删除笔记。具体备份和恢复审核流程见 `../development/p3-a.md`。
+## P3-B 来源块兼容性（2026-10-23）
+
+本阶段不新增表、列、索引或迁移，`0007_literature_notes` 保持不变。复用 `notes.sources` JSON 数组和 `source_schema_version=1`；旧 `sources=[]` 无需转换。`content` 继续保存可编辑纯文本，来源块按数组顺序单独显示，不向正文复制另一份内容。
+
+每块保存稳定 UUID、类型、创建时间、原始文字、可选译文与方向、验证后的翻译来源、幂等指纹，以及服务端生成的文献标题、文件 SHA256、物理页码和页级位置快照。普通正文更新与来源追加共用笔记版本；服务端构造新 JSON 数组并整列 CAS 更新，旧客户端不能通过普通 PATCH 清空来源。未知来源结构保留并提示，不静默覆盖。
+
+来源文献快照与 `note_documents` 多对多关系相互独立。只有用户明确选择 `link` 才新增关系；`keep` 不改变集合。解除关联或删除源文献不删除已有来源块，删除笔记本体才删除整条笔记。SQLite 已做隔离验证；真实 MySQL 仍需独立环境验收。
+
+## P3-C1 搜索数据边界（2026-10-25）
+
+关键词搜索只读复用`notes.title/content/sources`和既有`note_documents`摘要，不新增表、列、索引或迁移。候选集合先按`notes.owner_id`隔离，来源仅读取已保存JSON中的`originalText/translatedText`；关联表不参与候选连接，因此一条笔记关联多篇文献也只返回一次。搜索不写正文、版本、来源或关联，不读取sessionStorage草稿，也不建立PDF全文/向量索引。
