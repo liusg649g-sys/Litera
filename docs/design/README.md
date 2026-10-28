@@ -1,5 +1,7 @@
 # Litera 设计与规约索引
 
+> 2026-10-28规范更新：八类[工程规范](../standards/README.md)约束后续开发。Litera原项目只有01/02；03/04/07已在Litera-test实现但未合入原项目，以下历史段及表中状态须按仓库区分；不因同步文档而改变业务验收状态。
+
 更新时间：2026-10-20。项目：科研文献智能管理与协作平台，《互联网软件开发技术与实践》课程小组项目。
 
 [项目 README](../../README.md) · [六模块总览](../../openspec/changes/README.md)
@@ -31,8 +33,8 @@
 | --- | --- | --- | --- |
 | [01-literature-management](../../openspec/changes/01-literature-management/proposal.md) | Jensen Zhang | user-auth、literature-library | P1/P2-A/P2-B与UI已通过用户验收；33/34，专项MySQL补证待完成；未归档 |
 | [02-pdf-reader](../../openspec/changes/02-pdf-reader/proposal.md) | Jensen Zhang | pdf-reading、reader-workspace | A1/A2/B1/B2/C1用户已验收，C2开发及验证完成35/36，6.6用户实际验收待确认；Chrome/Edge仅保留C1确认范围，Adobe/MySQL专项未测试 |
-| [03-translation](../../openspec/changes/03-translation/proposal.md) | Siguo Liu | literature-translation | 待实现 |
-| [04-literature-notes](../../openspec/changes/04-literature-notes/proposal.md) | Siguo Liu | literature-notes | 待实现 |
+| [03-translation](../../openspec/changes/03-translation/proposal.md) | Siguo Liu | literature-translation | Litera-test已有实现；原Litera尚未合并，按本仓文件核对接入及验收状态 |
+| [04-literature-notes](../../openspec/changes/04-literature-notes/proposal.md) | Siguo Liu | literature-notes | Litera-test已有实现；原Litera尚未合并，按本仓文件核对接入及验收状态 |
 | [05-metadata-extraction](../../openspec/changes/05-metadata-extraction/proposal.md) | Jialu Ma | metadata-extraction | 待实现 |
 | [06-ai-qa](../../openspec/changes/06-ai-qa/proposal.md) | Jialu Ma | document-qa | 待实现 |
 

@@ -1,5 +1,7 @@
 # 系统总体架构
 
+> 2026-10-28规范更新：Vue/TS/Element Plus→nginx→FastAPI→MySQL/私有文件，02已用PDF.js；03/04/07仅Litera-test有代码，原Litera未合并，05/06真实能力未接入。以下早期“未来模块/建议目录”为历史目标，不要求据此重构；当前物理分层及例外见[后端规范](../standards/2-backend.md)。
+
 当前Change 01的P1/P2-A/P2-B与UI优化已完成，并通过用户功能/UI验收。PDF.js及03–06仍为后续目标设计；实际实现与证据见[交接](../../HANDOFF.md)及[P2-B记录](../development/p2-b.md)。
 
 ## B/S 技术链路
