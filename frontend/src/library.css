@@ -189,3 +189,7 @@
 
 .collapsed-folder-divider { border-top:1px solid var(--litera-border); margin:18px 6px 12px; }
 .library-workspace:has(.workspace-tabs) .library-body { min-height:calc(100dvh - 52px - var(--litera-tabs-height)); }
+
+/* ── 自动提取状态提示（05 题录提取） ──────────────────────────── */
+.extraction-alert { margin-bottom: 10px; }
+.extraction-retry { margin: 0 0 12px; }

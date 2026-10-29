@@ -3,8 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Download, View } from '@element-plus/icons-vue'
 import { ApiError } from '../api'
 import OverflowText from './OverflowText.vue'
-import { contentUrl, getDocument, saveDocument, sizeLabel } from '../library'
-import type { DocumentDTO, FolderDTO, TagDTO } from '../library'
+import { contentUrl, getDocument, getExtractionCandidates, saveDocument, sizeLabel, triggerExtraction } from '../library'
+import type { DocumentDTO, ExtractionCandidatesDTO, FolderDTO, TagDTO } from '../library'
 
 const props = defineProps<{ folders?: FolderDTO[]; tags?: TagDTO[]; categoriesReady?: boolean }>()
 const emit = defineEmits<{ saved: [document: DocumentDTO]; busy: [value: boolean]; read: [id: string] }>()
@@ -70,10 +70,15 @@ async function open(id: string, edit = false, force = false) {
   const requestRevision = ++revision
   documentId.value = id; loading.value = true; selected.value = null
   editing.value = false; conflict.value = false; errorMessage.value = ''
+  stopPolling(); candidates.value = null
   try {
     const document = await getDocument(id)
     if (requestRevision !== revision) return false
     selected.value = document; populate(document); editing.value = edit
+    if (document.extractionVersion) {
+      if (document.parseStatus === 'processing') startPolling(id)
+      else void getExtractionCandidates(id).then(result => { if (documentId.value === id) candidates.value = result }).catch(() => {})
+    }
   } catch (error) { if (requestRevision === revision) errorMessage.value = message(error) }
   finally { if (requestRevision === revision) loading.value = false }
   return requestRevision === revision
@@ -107,9 +112,62 @@ async function save() {
   finally { saving.value = false; emit('busy', false) }
 }
 function dateLabel(value: string) { return new Date(value).toLocaleString('zh-CN', { hour12: false }) }
+
+// ── 自动提取状态（05 题录提取） ─────────────────────────────────
+// 提取结果由后端自动回填 documents 表，详情页直接展示最终值；
+// 本模块只负责：processing 时轮询刷新详情、失败/警告展示、手动重试。
+const candidates = ref<ExtractionCandidatesDTO | null>(null)
+const polling = ref(false), retrying = ref(false)
+let pollTimer: number | undefined, pollCount = 0
+const POLL_MAX = 12, POLL_INTERVAL = 3000
+async function pollCandidates(id: string) {
+  // 轮询 documents 刷新详情展示（sync 内部在 dirty/saving 时跳过，不打断编辑）；
+  // candidates 端点仅用于提取告警与失败状态。
+  try {
+    const [result, document] = await Promise.all([getExtractionCandidates(id), getDocument(id)])
+    if (documentId.value !== id) return
+    candidates.value = result
+    sync(document)
+    if (document.parseStatus === 'processing' && pollCount < POLL_MAX) {
+      pollCount++
+      pollTimer = window.setTimeout(() => void pollCandidates(id), POLL_INTERVAL)
+    } else polling.value = false
+  } catch { polling.value = false }
+}
+function startPolling(id: string) { stopPolling(); pollCount = 0; polling.value = true; void pollCandidates(id) }
+function stopPolling() { if (pollTimer !== undefined) clearTimeout(pollTimer); pollTimer = undefined; polling.value = false }
+async function retryExtraction() {
+  if (!selected.value || retrying.value) return
+  retrying.value = true
+  try {
+    await triggerExtraction(selected.value.id)
+    startPolling(selected.value.id)
+  } catch (error) { errorMessage.value = message(error) }
+  finally { retrying.value = false }
+}
+const extractionAlerts = computed(() => {
+  const result = candidates.value
+  if (!result) return [] as { type: 'error' | 'warning'; text: string }[]
+  const alerts: { type: 'error' | 'warning'; text: string }[] = []
+  if (result.jobStatus === 'failed') {
+    if (result.errorCode === 'EXTRACTION_PDF_READ_ERROR') alerts.push({ type: 'error', text: 'PDF 文本读取失败，文件可能已损坏或为加密文档，请手动填写题录。' })
+    else if (result.errorCode === 'MODEL_UNAVAILABLE') alerts.push({ type: 'warning', text: 'AI 模型暂时不可用，仅保留 PDF 内嵌与自动识别结果。' })
+    else if (result.errorCode === 'PROCESS_INTERRUPTED') alerts.push({ type: 'warning', text: '提取任务被服务重启中断，请点击重新提取。' })
+    else alerts.push({ type: 'error', text: `自动提取失败（${result.errorCode || '未知错误'}），请重试或手动填写。` })
+  }
+  const warnings = result.warnings || []
+  if (warnings.some(item => item.includes('LLM 输入为空'))) alerts.push({ type: 'error', text: '未能从 PDF 中提取到正文文本，可能是纯扫描件，请手动填写题录。' })
+  if (warnings.some(item => item.includes('LLM 提取失败') || item.includes('LLM 输出解析失败'))) alerts.push({ type: 'warning', text: 'AI 模型提取未成功，当前仅展示 PDF 内嵌与自动识别结果。' })
+  return alerts
+})
+const showRetry = computed(() => {
+  const result = candidates.value
+  if (!result || polling.value) return false
+  return result.jobStatus === 'failed' || (result.warnings || []).some(item => item.includes('LLM 提取失败') || item.includes('LLM 输出解析失败'))
+})
 function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value) { event.preventDefault(); event.returnValue = '' } }
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); window.addEventListener('keydown', captureConfirmationKeys, true) })
-onUnmounted(() => { ++revision; resolveConfirmation?.(false); resolveConfirmation = null; window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('keydown', captureConfirmationKeys, true) })
+onUnmounted(() => { ++revision; stopPolling(); resolveConfirmation?.(false); resolveConfirmation = null; window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('keydown', captureConfirmationKeys, true) })
 defineExpose({ open, allowLeave, sync })
 </script>
 <template>
@@ -118,6 +176,9 @@ defineExpose({ open, allowLeave, sync })
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" :closable="false" />
     <el-button v-if="!selected && !loading" @click="open(documentId, false, true)">重试加载文献</el-button>
     <template v-if="selected">
+      <el-alert v-if="polling" title="正在自动提取题录信息，提取结果将自动填入…" type="info" :closable="false" class="extraction-alert" />
+      <el-alert v-for="(alert, index) in extractionAlerts" :key="index" :title="alert.text" :type="alert.type" :closable="false" class="extraction-alert" />
+      <p v-if="showRetry" class="extraction-retry"><el-button size="small" :loading="retrying" @click="retryExtraction">重新提取</el-button></p>
       <form v-if="editing" class="metadata-form" @submit.prevent="save">
         <label>标题<input v-model="draft.title" maxlength="500" required :disabled="saving"></label>
         <label>作者（每行一位）<textarea v-model="draft.authors" rows="3" :disabled="saving" /></label>

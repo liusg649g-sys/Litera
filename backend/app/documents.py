@@ -199,9 +199,37 @@ def save_upload(file, owner_id, db, folder_id=None):
         published = storage_path(attachment.storage_key)
         os.replace(temporary, published)
         db.commit()
+        # ── 自动提取同步层（Layer 1 + Layer 2） ────────────────
+        extraction_version = None
+        extraction_candidates = {}
+        try:
+            import io
+            from .metadata_extraction import run_sync_layers
+            from .extraction import create_extraction_job, persist_extraction
+            from pypdf import PdfReader
+            pdf_bytes = published.read_bytes()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            layer1, layer2, page_texts, _ = run_sync_layers(reader)
+            file_hash = attachment.sha256
+            db.expire_all()
+            doc_refreshed = db.get(Document, document_id)
+            job = create_extraction_job(db, owner_id, document_id, file_hash)
+            merged = persist_extraction(db, job, doc_refreshed, layer1, layer2, page_texts)
+            extraction_version = job.version_id
+            extraction_candidates = merged.get("metadata", {})
+        except Exception as exc:
+            logging.warning("Sync extraction layers failed for %s: %s", document_id, exc)
+        # ── 自动提取结束 ────────────────────────────────────────
         # Return database-normalized timestamps (MySQL DATETIME has second precision).
         db.refresh(doc)
-        return document_dto(doc, attachment, db)
+        dto = document_dto(doc, attachment, db)
+        # 在 dto 里补充提取相关字段（extraction_version 会在 persist_extraction 里更新 doc）
+        if extraction_version:
+            doc = db.get(Document, document_id)
+            if doc:
+                dto["extractionVersion"] = doc.extraction_version or extraction_version
+                dto["parseStatus"] = doc.parse_status or "processing"
+        return dto, extraction_version
     except Exception as error:
         db.rollback()
         if published and published.exists():
@@ -241,7 +269,13 @@ def create_document_router(current_session, require_csrf):
             folder_id = form.get("folderId")
             if folder_id is not None and (not isinstance(folder_id, str) or not folder_id or len(folder_id) > 36 or len(form.getlist("folderId")) != 1):
                 reject(422, "INVALID_UPLOAD", "folderId 必须是文件夹 ID")
-            return await run_in_threadpool(save_upload, form["file"], session.user_id, db, folder_id)
+            dto, extraction_version = await run_in_threadpool(save_upload, form["file"], session.user_id, db, folder_id)
+            # 触发异步 Layer 3
+            if dto.get("extractionVersion"):
+                import asyncio
+                from .extraction import run_layer3_async
+                asyncio.create_task(run_layer3_async(dto["id"], session.user_id))
+            return dto
 
     @router.get("/documents")
     def list_documents(request: Request, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),

@@ -29,6 +29,16 @@ from starlette.concurrency import run_in_threadpool
 
 @asynccontextmanager
 async def lifespan(app):
+    # 启动时清理 orphan extraction jobs（进程重启导致 processing 状态丢失）
+    try:
+        from .database import SessionLocal
+        from .extraction import run_startup_scan
+        _db = SessionLocal()
+        run_startup_scan(_db)
+        _db.close()
+    except Exception as exc:
+        logging.warning("Startup orphan extraction scan failed: %s", exc)
+
     async def collect():
         while True:
             await run_in_threadpool(sweep_assets)
@@ -238,3 +248,6 @@ app.include_router(create_note_router(current_session, require_csrf))
 
 from .user_models import create_user_model_router
 app.include_router(create_user_model_router(current_session, require_csrf))
+
+from .extraction import create_extraction_router
+app.include_router(create_extraction_router(current_session, require_csrf))

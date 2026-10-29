@@ -211,3 +211,59 @@ class UserModelProfile(Base):
     encryption_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
     tested_revision: Mapped[str | None] = mapped_column(String(36))
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ExtractionJob(Base):
+    __tablename__ = "extraction_jobs"
+    __table_args__ = (Index("ix_extraction_jobs_owner_document", "owner_id", "document_id"), {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # queued | processing | completed | failed
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class ExtractionResult(Base):
+    __tablename__ = "extraction_results"
+    __table_args__ = (UniqueConstraint("document_id", "extraction_version", name="uq_extraction_results_doc_version"),
+                      Index("ix_extraction_results_owner", "owner_id"), {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidates: Mapped[dict] = mapped_column("metadata", JSON, nullable=False)
+    field_sources: Mapped[dict] = mapped_column(JSON, nullable=False)
+    warnings: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class DocumentPage(Base):
+    __tablename__ = "document_pages"
+    __table_args__ = (UniqueConstraint("document_id", "extraction_version", "page_number", name="uq_document_pages_doc_ver_page"),
+                      Index("ix_document_pages_owner", "owner_id"), {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+    __table_args__ = (Index("ix_document_chunks_owner_doc_ver", "owner_id", "document_id", "extraction_version"),
+                      {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)

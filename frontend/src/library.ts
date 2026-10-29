@@ -50,6 +50,15 @@ export const restoreDocument = (id: string) => api<DocumentDTO>('/trash/document
 export const purgeDocument = (id: string) => api<CleanupJobDTO | undefined>('/trash/documents/' + encodeURIComponent(id), { method: 'DELETE' }, auth.csrfToken)
 export const retryCleanup = (id: string) => api<CleanupJobDTO | undefined>('/cleanup-jobs/' + encodeURIComponent(id) + '/retry', { method: 'POST' }, auth.csrfToken)
 export const getCleanup = (id: string) => api<CleanupJobDTO>('/cleanup-jobs/' + encodeURIComponent(id))
+export interface ExtractionCandidate { value: string | string[] | number | null; source: string; confidence: number }
+export interface ExtractionCandidatesDTO {
+  documentId: string; extractionVersion: string | null; jobStatus: string; errorCode: string | null;
+  metadata: Record<string, ExtractionCandidate>; fieldSources: Record<string, ExtractionCandidate[]>; warnings: string[];
+}
+export const getExtractionCandidates = (id: string) =>
+  api<ExtractionCandidatesDTO>('/documents/' + encodeURIComponent(id) + '/extraction-candidates')
+export const triggerExtraction = (id: string) =>
+  api<{ status: string; version: string; jobStatus: string }>('/documents/' + encodeURIComponent(id) + '/extract', { method: 'POST' }, auth.csrfToken)
 export const recordOpen = (id: string, signal?: AbortSignal) => api('/documents/' + encodeURIComponent(id) + '/progress', { method: 'PUT', body: '{}', signal }, auth.csrfToken)
 export const clampSidebar = (width: number) => Math.min(320, Math.max(180, width))
 export function sizeLabel(bytes: number) {
