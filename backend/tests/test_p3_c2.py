@@ -18,7 +18,11 @@ from test_reader_assets import asset, object_data
 from export_samples import KINDS
 
 
-def test_two_user_full_journey_13_types_conflict_export_restore_and_cleanup(logged):
+def test_two_user_full_journey_13_types_conflict_export_restore_and_cleanup(logged, monkeypatch):
+    from app import metadata_extraction
+    # This journey is about P3 reader/notes state, not automatic extraction; keep
+    # the uploaded document at its initial version for the CAS assertions.
+    monkeypatch.setattr(metadata_extraction, "run_sync_layers", lambda _reader: (_ for _ in ()).throw(RuntimeError("disabled")))
     buffer = BytesIO()
     canvas = Canvas(buffer, pagesize=(200, 300))
     for page in range(3):

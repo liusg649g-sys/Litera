@@ -229,7 +229,7 @@ def test_upgrade_0004_keeps_existing_business_rows_and_pdf(tmp_path,monkeypatch)
     ac.upgrade(config,'head')
     with engine.connect() as conn:
         for table,rows in before.items():assert conn.execute(text('SELECT * FROM '+table)).mappings().all()==rows
-        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0008_user_model_profiles'
+        assert conn.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0010_qa_answers_indexes_vectors'
     assert original.read_bytes()==b'%PDF-existing-original'
     engine.dispose()
 

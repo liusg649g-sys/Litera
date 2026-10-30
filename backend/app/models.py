@@ -1,8 +1,8 @@
 from datetime import datetime
-from sqlalchemy import DateTime, LargeBinary, ForeignKey, String, Integer, BigInteger, JSON, Text, UniqueConstraint, Index
+from sqlalchemy import DateTime, LargeBinary, ForeignKey, String, Integer, BigInteger, JSON, Text, Boolean, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
-from sqlalchemy.dialects.mysql import DATETIME, MEDIUMTEXT
+from sqlalchemy.dialects.mysql import DATETIME, MEDIUMBLOB, MEDIUMTEXT
 library_time = DateTime().with_variant(DATETIME(fsp=6), "mysql")
 
 class User(Base):
@@ -267,3 +267,64 @@ class DocumentChunk(Base):
     start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+
+
+class QaAnswer(Base):
+    """Immutable snapshot of one published answer; never rewritten by later versions."""
+    __tablename__ = "qa_answers"
+    __table_args__ = (Index("ix_qa_answers_owner_doc_created", "owner_id", "document_id", "created_at"),
+                      Index("ix_qa_answers_doc_version", "document_id", "extraction_version"),
+                      {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    intent: Mapped[str] = mapped_column(String(24), nullable=False)
+    question: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+    answer: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    citations: Mapped[list] = mapped_column(JSON, nullable=False)
+    sections: Mapped[list] = mapped_column(JSON, nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    context_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class QaIndex(Base):
+    __tablename__ = "qa_indexes"
+    __table_args__ = (UniqueConstraint("document_id", "extraction_version", name="uq_qa_indexes_doc_version"),
+                      Index("ix_qa_indexes_owner_document", "owner_id", "document_id", "status"),
+                      {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(200), nullable=False)
+    dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # building | ready | failed
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    built_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class QaChunkVector(Base):
+    __tablename__ = "qa_chunk_vectors"
+    __table_args__ = (UniqueConstraint("chunk_id", name="uq_qa_chunk_vectors_chunk"),
+                      Index("ix_qa_chunk_vectors_doc_version", "document_id", "extraction_version"),
+                      {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    extraction_version: Mapped[str] = mapped_column(String(36), nullable=False)
+    chunk_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary().with_variant(MEDIUMBLOB(), "mysql"), nullable=False)
+    dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

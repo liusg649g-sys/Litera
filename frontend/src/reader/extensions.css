@@ -18,3 +18,89 @@
  .reader-body:has(.reader-extension-panels.translation-open)>.pdf-reading-region .pdf-viewport,.reader-body:has(.reader-extension-panels.notes-open)>.pdf-reading-region .pdf-viewport{padding-bottom:52dvh}
  .reader-body:has(.reader-extension-panels.translation-open.notes-open)>.pdf-reading-region .pdf-viewport{padding-bottom:60dvh}
 }
+
+/* 06 文献阅读助手：三态布局、收起按钮与悬浮胶囊 */
+.reader-body.qa-open{--qa-panel-width:500px}
+@media(max-width:1439px){.reader-body.qa-open{--qa-panel-width:460px}}
+@media(max-width:1199px){.reader-body.qa-open{--qa-panel-width:380px}}
+.reader-body aside.qa-panel,.reader-body dialog.qa-panel{width:var(--qa-panel-width);flex-shrink:0;border-left:1px solid var(--litera-border);background:#fff}
+.reader-body dialog.qa-panel{max-width:calc(100vw - 32px)}
+.reader-body .qa-collapse{position:absolute;top:50%;right:calc(var(--qa-panel-width) - 18px);transform:translateY(-50%);width:36px;height:36px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--litera-border);box-shadow:0 2px 10px #0002;color:var(--litera-primary);z-index:12;cursor:pointer}
+.reader-body .qa-collapse svg{width:16px;height:16px}
+.reader-body .qa-collapse:focus-visible{outline:2px solid var(--litera-primary);outline-offset:2px}
+.qa-capsule{position:absolute;left:24px;bottom:24px;height:44px;border-radius:22px;padding:0 16px;display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--litera-border);box-shadow:0 6px 20px #0002;color:var(--litera-text);z-index:12;font-size:13px;cursor:pointer}
+.qa-capsule svg{width:20px;height:20px;color:var(--litera-primary)}
+.qa-capsule:hover{border-color:var(--litera-primary)}
+.qa-capsule:focus-visible{outline:2px solid var(--litera-primary);outline-offset:2px}
+.qa-content{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px 14px 12px;overflow:hidden auto;font-size:13px;line-height:1.65;color:var(--litera-text)}
+.qa-welcome,.qa-tabs,.qa-suggestions,.qa-notice{flex-shrink:0}
+.qa-welcome{text-align:center;padding:8px 4px 0}
+.qa-welcome .qa-robot{width:88px;height:88px;color:var(--litera-primary);opacity:.9}
+.qa-welcome h2{font-size:16px;margin:8px 0 4px;font-weight:600}
+.qa-welcome p{color:var(--litera-muted);margin:4px 0}
+.qa-welcome ul{text-align:left;margin:10px 0 0;padding-left:18px;color:var(--litera-text);line-height:1.9}
+.qa-scope{font-size:12px;color:var(--litera-muted)}
+.qa-tabs{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;border-bottom:1px solid var(--litera-border);padding-bottom:8px}
+.qa-tabs button{padding:4px 10px;border-radius:12px;border:1px solid transparent;background:transparent;font-size:12px;color:var(--litera-muted);cursor:pointer}
+.qa-tabs button.selected{background:var(--litera-primary-soft);color:var(--litera-primary);border-color:var(--litera-primary)}
+.qa-suggestions{display:flex;flex-wrap:nowrap;gap:6px;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;padding-bottom:2px;scrollbar-width:thin}
+.qa-suggestions button{flex:0 0 auto;white-space:nowrap;padding:6px 10px;border:1px solid var(--litera-border);border-radius:8px;background:#fafafa;font-size:12px;cursor:pointer;text-align:left}
+.qa-suggestions button:first-child{margin-left:auto}
+.qa-suggestions button:last-child{margin-right:auto}
+.qa-suggestions button:hover{border-color:var(--litera-primary);color:var(--litera-primary)}
+.qa-notice{color:var(--litera-primary);background:var(--litera-primary-soft);border-radius:8px;padding:6px 10px;font-size:12px}
+.qa-messages{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;overscroll-behavior:contain}
+.qa-message{border:1px solid var(--litera-border);border-radius:12px;padding:10px 12px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.04)}
+.qa-question{font-weight:600;margin:0 0 6px;overflow-wrap:anywhere}
+.qa-loading{display:flex;align-items:center;gap:8px;color:var(--litera-muted);margin:0}
+.qa-spinner{width:14px;height:14px;border:2px solid #d7dbe0;border-top-color:var(--litera-primary);border-radius:50%;animation:reader-spin 1s linear infinite;display:inline-block}
+.qa-error{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#b02a1e;margin:0;flex-wrap:wrap}
+.qa-error button{padding:4px 10px;border-radius:6px;border:1px solid currentColor;background:#fff;cursor:pointer}
+.qa-answer{margin:0}
+.qa-disclaimer{font-size:11px;color:var(--litera-muted);margin:0 0 6px}
+.qa-answer-text,.qa-insufficient{margin:0 0 8px;overflow-wrap:anywhere;white-space:pre-wrap}
+.qa-insufficient{color:var(--litera-muted);background:#f7f7f8;border-radius:8px;padding:8px 10px}
+.qa-section{border-top:1px dashed var(--litera-border);padding-top:8px;margin-top:8px}
+.qa-section h4{font-size:13px;margin:0 0 4px;color:var(--litera-primary)}
+.qa-section p{margin:0 0 6px;overflow-wrap:anywhere;white-space:pre-wrap}
+.qa-citations{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.qa-citations li{display:flex;flex-direction:column;gap:4px;background:#f7f7f8;border-radius:8px;padding:8px 10px}
+.qa-refs{margin-top:8px;border-top:1px dashed var(--litera-border);padding-top:6px}
+.qa-refs>summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--litera-primary);list-style:none;user-select:none}
+.qa-refs>summary::-webkit-details-marker{display:none}
+.qa-refs>summary::before{content:'';width:0;height:0;border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .18s}
+.qa-refs[open]>summary::before{transform:rotate(90deg)}
+.qa-refs>summary:focus-visible{outline:2px solid var(--litera-primary);outline-offset:2px}
+.qa-page{align-self:flex-start;border:1px solid var(--litera-primary);color:var(--litera-primary);background:#fff;border-radius:10px;padding:1px 8px;font-size:11px;cursor:pointer}
+.qa-page:hover{background:var(--litera-primary-soft)}
+.qa-quote{font-size:12px;color:var(--litera-muted);overflow-wrap:anywhere}
+.qa-meta{font-size:11px;color:var(--litera-muted);margin:8px 0 0}
+.qa-input{border-top:1px solid var(--litera-border);padding-top:8px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.qa-input textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;max-height:160px;border:1px solid var(--litera-border);border-radius:8px;padding:8px;font:inherit;font-size:13px}
+.qa-input textarea:focus{outline:none;border-color:var(--litera-primary);box-shadow:0 0 0 2px var(--litera-primary-soft)}
+.qa-input-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.qa-input-actions button{padding:5px 10px;border:1px solid var(--litera-border);border-radius:8px;background:#fff;font-size:12px;cursor:pointer}
+.qa-input-actions button:disabled{color:var(--litera-muted);cursor:not-allowed;background:#fafafa}
+.qa-send{margin-left:auto;background:var(--litera-primary);border-color:var(--litera-primary);color:#fff}
+.qa-send:disabled{background:#d9d9d9;border-color:#d9d9d9;color:#fff}
+@media(max-width:1099px){
+ .qa-content{padding:12px}
+ .qa-welcome .qa-robot{width:64px;height:64px}
+ /* 底部抽屉打开时胶囊上移避让，抽屉 z-index 更高 */
+ .reader-body:has(.reader-extension-panels.translation-open)>.pdf-reading-region>.qa-capsule,.reader-body:has(.reader-extension-panels.notes-open)>.pdf-reading-region>.qa-capsule{bottom:calc(52dvh + 16px)}
+ .reader-body:has(.reader-extension-panels.translation-open.notes-open)>.pdf-reading-region>.qa-capsule{bottom:calc(60dvh + 16px)}
+}
+@media(prefers-reduced-motion:reduce){.qa-capsule,.qa-collapse,.qa-send{transition:none}.qa-spinner{animation:none}.qa-refs>summary::before{transition:none}}
+/* 助手与翻译/笔记共存：扩展面板进入 flex 行，PDF 变窄但不被覆盖；助手收起后回到 02 的覆盖式默认布局。 */
+@media(min-width:1100px) and (max-width:1699px){
+ .reader-body.qa-open .reader-extension-panels{position:relative;right:auto;top:auto;bottom:auto;flex:0 0 300px;width:300px;box-shadow:none;z-index:auto}
+ .reader-body.qa-open .reader-extension-panels .reader-panel{width:100%!important}
+}
+@media(min-width:1200px) and (max-width:1699px){
+ .reader-body.qa-open .reader-extension-panels{flex-basis:320px;width:320px}
+}
+@media(min-width:1440px){
+ .reader-body.qa-open:has(.reader-extension-panels.translation-open),.reader-body.qa-open:has(.reader-extension-panels.notes-open){--qa-panel-width:440px}
+ .reader-body.qa-open .reader-extension-panels{position:relative;right:auto;top:auto;bottom:auto;flex:0 0 400px;width:400px;box-shadow:none;z-index:auto}
+ .reader-body.qa-open .reader-extension-panels .reader-panel{width:100%!important}
+}

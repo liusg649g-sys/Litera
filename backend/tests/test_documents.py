@@ -35,7 +35,11 @@ def logged(client):
 def upload(client, data, name="论文.pdf"):
     return client.post("/api/v1/documents", files={"file": (name, data, "application/pdf")})
 
-def test_upload_details_content_and_stable_id(logged, pdf):
+def test_upload_details_content_and_stable_id(logged, pdf, monkeypatch):
+    from app import metadata_extraction
+    # Upload contract only: keep the automatic extraction pipeline out of this test
+    # so the pristine upload DTO and header semantics stay deterministic.
+    monkeypatch.setattr(metadata_extraction, "run_sync_layers", lambda _reader: (_ for _ in ()).throw(RuntimeError("disabled")))
     response = upload(logged, pdf)
     assert response.status_code == 201
     doc = response.json()
@@ -224,7 +228,7 @@ def test_upgrade_from_auth_preserves_user(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with isolated.connect() as conn:
         assert conn.execute(text("SELECT display_name FROM users WHERE id='existing'")).scalar() == "Existing"
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0008_user_model_profiles"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0010_qa_answers_indexes_vectors"
     isolated.dispose()
 
 @pytest.mark.parametrize("microseconds,stored_second", [(123456, 6), (654321, 7)])
@@ -251,6 +255,10 @@ def test_upload_returns_database_normalized_timestamps(logged, pdf, monkeypatch,
         connection.execute(Document.__table__.update().where(Document.id == target.id)
                            .values(created_at=stored, updated_at=stored))
 
+    from app import metadata_extraction
+    # Timestamp normalization is the subject here; automatic extraction would
+    # legitimately rewrite updated_at/version after the inserted row.
+    monkeypatch.setattr(metadata_extraction, "run_sync_layers", lambda _reader: (_ for _ in ()).throw(RuntimeError("disabled")))
     monkeypatch.setattr(documents, "datetime", UploadClock)
     event.listen(Document, "after_insert", normalize_in_database)
     try:

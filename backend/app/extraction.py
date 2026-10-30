@@ -325,6 +325,14 @@ def mark_job_completed_with_llm(db: Session, job: ExtractionJob, layer3: LayerRe
         doc.updated_at = now
     db.commit()
 
+    # 05 的提取版本完成后异步构建 06 的检索索引；失败不影响本次提取结果。
+    if doc is not None and doc.parse_status == "completed" and doc.extraction_version:
+        try:
+            from .rag import trigger_index_build
+            trigger_index_build(doc.id, job.owner_id, doc.extraction_version)
+        except Exception as exc:
+            logger.warning("QA index trigger failed for %s: %s", job.document_id, exc)
+
 
 # ── 异步触发 Layer 3 ──────────────────────────────────────────────
 

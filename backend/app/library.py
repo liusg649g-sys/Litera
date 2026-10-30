@@ -186,6 +186,9 @@ def run_cleanup(db, job):
             db.execute(delete(model).where(model.document_id == job.document_id, model.owner_id == job.owner_id))
         db.execute(delete(DocumentTag).where(DocumentTag.document_id == job.document_id, DocumentTag.owner_id == job.owner_id))
         db.execute(delete(ReadingProgress).where(ReadingProgress.document_id == job.document_id, ReadingProgress.owner_id == job.owner_id))
+        from .models import QaAnswer, QaIndex, QaChunkVector
+        for model in (QaAnswer, QaIndex, QaChunkVector):
+            db.execute(delete(model).where(model.document_id == job.document_id, model.owner_id == job.owner_id))
         db.execute(delete(DocumentFile).where(DocumentFile.document_id == job.document_id, DocumentFile.owner_id == job.owner_id))
         db.execute(delete(Document).where(Document.id == job.document_id, Document.owner_id == job.owner_id, Document.purge_job_id == job.id))
         job.status = "completed"; job.storage_key = None; job.lease_expires_at = None; job.updated_at = now()

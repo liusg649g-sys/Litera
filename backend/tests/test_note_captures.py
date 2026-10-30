@@ -88,7 +88,7 @@ def test_capture_config_uses_static_route_and_never_changes_old_config(logged, m
     assert config.status_code == 200
     assert config.json() == dict(available=True, formatVersion=1, maxOriginalLength=6000,
         maxTranslatedLength=20000, maxBlocks=100, maxSourceBytes=1048576, isolatedTranslationMock=False,
-        supportedSourceKinds=['pdf_excerpt','translation_excerpt'], aiAnswerCapture=dict(available=False, isolatedMock=False))
+        supportedSourceKinds=['pdf_excerpt','translation_excerpt','ai_answer'], aiAnswerCapture=dict(available=True, isolatedMock=False))
     monkeypatch.setenv('LITERA_ISOLATED_TRANSLATION_MOCK', '1')
     assert logged.get('/api/v1/notes/capture-config').json()['isolatedTranslationMock'] is True
     monkeypatch.setattr(note_captures, 'schema_available', lambda db: False)

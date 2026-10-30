@@ -97,7 +97,9 @@ _DEFAULT = UnavailableAnswerResolver()
 
 
 def get_answer_resolver() -> AnswerResolver:
-    return _DEFAULT
+    """QA module owns the production resolver; notes only consume its records."""
+    from .qa import QaAnswerResolver
+    return QaAnswerResolver()
 
 
 def read_answer(resolver, db, owner, source):

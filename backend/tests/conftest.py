@@ -26,6 +26,7 @@ from app.database import engine, SessionLocal
 from app.main import app, auth_attempts
 from app.models import LoginSession, User, Document, DocumentFile, Folder, Tag, DocumentTag, ReadingProgress, CleanupJob
 from app.models import ReaderAsset, Annotation, DocumentReaderState, AnnotationCommandReceipt, Note, NoteDocument, UserModelProfile
+from app.models import QaAnswer, QaIndex, QaChunkVector
 
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database():
@@ -40,7 +41,7 @@ def migrated_database():
 @pytest.fixture(autouse=True)
 def clean_database(migrated_database):
     with SessionLocal() as db:
-        for model in (UserModelProfile, NoteDocument, Note, ReaderAsset, AnnotationCommandReceipt, Annotation, DocumentReaderState, CleanupJob, ReadingProgress, DocumentTag):
+        for model in (UserModelProfile, QaAnswer, QaChunkVector, QaIndex, NoteDocument, Note, ReaderAsset, AnnotationCommandReceipt, Annotation, DocumentReaderState, CleanupJob, ReadingProgress, DocumentTag):
             db.execute(delete(model))
         db.execute(delete(DocumentFile))
         db.execute(delete(Document))

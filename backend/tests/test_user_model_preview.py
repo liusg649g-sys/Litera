@@ -57,7 +57,7 @@ def test_unified_backup_restore_migrates_only_copy_and_retains_every_source_file
     assert module.file_manifest(data/'pdfs')==module.file_manifest(source/'pdfs')
     with sqlite3.connect((source/'preview.db').as_uri()+'?mode=ro',uri=True) as db:assert db.execute('select version_num from alembic_version').fetchone()[0]=='0007_literature_notes'
     with sqlite3.connect((data/'preview.db').as_uri()+'?mode=ro',uri=True) as db:
-        assert db.execute('select version_num from alembic_version').fetchone()[0]=='0008_user_model_profiles'
+        assert db.execute('select version_num from alembic_version').fetchone()[0]=='0010_qa_answers_indexes_vectors'
         assert db.execute('select content from notes').fetchall()==[('Retain body',)]
         assert db.execute('pragma integrity_check').fetchone()[0]=='ok'
         assert db.execute('pragma foreign_key_check').fetchall()==[]

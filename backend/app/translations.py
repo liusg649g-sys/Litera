@@ -1,6 +1,6 @@
 """Authenticated selection translation; no schema changes or persisted translation history."""
 from collections import defaultdict, deque
-from threading import BoundedSemaphore, Lock
+from threading import Lock
 import time
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -14,13 +14,13 @@ from .config import get_model_settings as get_settings
 from .documents import owned_document, storage_path
 from .models import LoginSession
 from .model_service import ModelFailure, translate_text
-from .ai_service import DeveloperProfileResolver
+from .ai_service import DeveloperProfileResolver, MODEL_SLOTS
 from .text_quality import unreliable_characters, opaque_font_mapping
 from .pdf_text import ModelInput, model_input_text
 from .translation_runtime import current_timing, observed_translation, run_connected
 from .translation_proof import issue_translation_proof
 
-slots = BoundedSemaphore(2)
+slots = MODEL_SLOTS
 rate_lock = Lock()
 attempts = defaultdict(deque)
 

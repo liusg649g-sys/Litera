@@ -10,7 +10,7 @@ def test_fresh_sqlite_full_migration_chain_and_repeat_head(tmp_path,monkeypatch)
     monkeypatch.setattr(get_settings(),'database_url','sqlite:///'+str(target))
     config=Config('alembic.ini');command.upgrade(config,'head')
     with sqlite3.connect(target) as db:
-        assert db.execute('select version_num from alembic_version').fetchall()==[('0008_user_model_profiles',)]
+        assert db.execute('select version_num from alembic_version').fetchall()==[('0010_qa_answers_indexes_vectors',)]
         assert db.execute('pragma integrity_check').fetchone()[0]=='ok'
         assert db.execute('pragma foreign_key_check').fetchall()==[]
         before=db.execute('select name,sql from sqlite_master order by name').fetchall()

@@ -50,12 +50,13 @@ def count_blocks(note_id):
         return len(note.sources) if note else 0
 
 
-def test_default_unavailable_and_no_mock_routes(logged):
+def test_default_resolver_is_qa_backed_and_no_mock_routes(logged):
     cfg=logged.get('/api/v1/notes/capture-config').json()
-    assert cfg['aiAnswerCapture']==dict(available=False,isolatedMock=False)
+    assert cfg['aiAnswerCapture']==dict(available=True,isolatedMock=False)
+    assert 'ai_answer' in cfg['supportedSourceKinds']
     assert not any('mock-answers' in path for path in app.openapi()['paths'])
     class Ref: answerId=str(uuid4());answerRevision=1
-    assert_error(send(logged,body(Ref())), 'AI_ANSWER_UNAVAILABLE',503)
+    assert_error(send(logged,body(Ref())), 'AI_ANSWER_NOT_FOUND',404)
     assert logged.get('/api/v1/notes/answer-preview/not-a-uuid?revision=1').status_code==422
 
 

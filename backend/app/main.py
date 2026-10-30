@@ -44,15 +44,30 @@ async def lifespan(app):
             await run_in_threadpool(sweep_assets)
             await run_in_threadpool(sweep_exports)
             await asyncio.sleep(60)
+
+    async def index_sweeper():
+        from .config import get_model_settings
+        from .rag import sweep_candidates, trigger_index_build
+        while True:
+            try:
+                for job in await run_in_threadpool(sweep_candidates):
+                    trigger_index_build(*job)
+            except Exception as exc:
+                logging.warning("QA index sweep failed: %s", exc)
+            await asyncio.sleep(get_model_settings().qa_index_sweep_seconds)
+
     collector = asyncio.create_task(collect())
+    indexer = asyncio.create_task(index_sweeper())
     try:
         yield
     finally:
         collector.cancel()
-        try:
-            await collector
-        except asyncio.CancelledError:
-            pass
+        indexer.cancel()
+        for task in (collector, indexer):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 settings = get_settings()
 app = FastAPI(title="Litera API", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
@@ -251,3 +266,6 @@ app.include_router(create_user_model_router(current_session, require_csrf))
 
 from .extraction import create_extraction_router
 app.include_router(create_extraction_router(current_session, require_csrf))
+
+from .qa import create_qa_router
+app.include_router(create_qa_router(current_session, require_csrf))

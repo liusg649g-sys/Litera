@@ -2,13 +2,14 @@
 import { computed, provide, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { ArrowLeft, ArrowRight, ArrowDown, FullScreen, Fold, Expand, Search, ChatLineSquare, EditPen, Brush, Picture, CirclePlus, Crop, RefreshLeft, RefreshRight, Delete, Document } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, ArrowDown, FullScreen, Fold, Expand, Search, ChatLineSquare, EditPen, Brush, Picture, CirclePlus, Crop, RefreshLeft, RefreshRight, Delete, Document, Reading } from '@element-plus/icons-vue'
 import Brand from '../components/Brand.vue'
 import WorkspaceTabs from '../components/WorkspaceTabs.vue'
 import PdfPage from '../components/PdfPage.vue'
 import ReaderPanel from '../components/ReaderPanel.vue'
 import TranslationPanel from '../components/TranslationPanel.vue'
 import NotesPanel from '../components/NotesPanel.vue'
+import QaAssistantPanel from '../components/QaAssistantPanel.vue'
 import SaveToNoteDialog from '../components/SaveToNoteDialog.vue'
 import MockAnswerPreview from '../components/MockAnswerPreview.vue'
 import { pdfNoteCapture } from '../reader/noteCapture'
@@ -16,7 +17,8 @@ import type { NoteCaptureDraft } from '../notes/captures'
 import type { NoteDTO } from '../notes'
 const translationPanel = ref<InstanceType<typeof TranslationPanel>>()
 const notesPanel = ref<InstanceType<typeof NotesPanel>>()
-const translationOpen = ref(false), notesOpen = ref(false)
+const qaPanel = ref<InstanceType<typeof QaAssistantPanel>>()
+const translationOpen = ref(false), notesOpen = ref(false), assistantOpen = ref(false)
 const isolatedMockPreview=import.meta.env.VITE_LITERA_PREVIEW_MOCK==='true' || import.meta.env.VITE_LITERA_UNIFIED_ACCEPTANCE==='true'
 const captureDraft=shallowRef<NoteCaptureDraft|null>(null),capturePreparing=ref(false)
 let captureEpoch=0
@@ -778,6 +780,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="reader-groups" aria-label="工具分组"><button v-for="name in ['阅读','批注','形状','插入']" :key="name" :aria-pressed="group === name" :class="{ selected: group === name }" @click="!editingBlocked() && (group = name)">{{ name }}</button></div>
       <div class="reader-actions">
+        <el-tooltip :append-to="readerRoot" content="文献阅读助手" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="文献阅读助手" :aria-pressed="assistantOpen" @click="qaPanel?.toggle()"><Reading /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" content="搜索文献" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="搜索文献" @click="openRight('搜索')"><Search /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" content="批注列表" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="批注列表" @click="openRight('批注列表')"><ChatLineSquare /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" :content="fullscreen?'退出全屏':'全屏阅读'" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150"><button :aria-label="fullscreen?'退出全屏':'全屏阅读'" :aria-pressed="fullscreen" :disabled="fullscreenPending || fullscreenTransitioning" @click="toggleFullscreen"><component :is="fullscreen?FullscreenExitIcon:FullScreen" /></button></el-tooltip>
@@ -800,7 +803,7 @@ onBeforeUnmount(() => {
     <div v-if="annotations?.state.error" class="reader-notice annotation-error" role="alert">{{ annotations.state.error }}<button v-if="annotations.state.phase!=='conflict'" @click="annotations.retry">重试保存批注</button><button @click="annotations.exportDraft">导出批注草稿</button><button @click="reloadAnnotations">载入服务端批注并保留草稿备份</button><button @click="retainDraftAndReturn">保留批注草稿并返回文献库</button></div>
     <div v-if="notice" class="reader-notice" role="status">{{ notice }}<button aria-label="关闭提示" @click="notice = ''">×</button></div>
     <div v-if="pdf && ready && progress?.status.error" class="reader-notice" role="alert">{{ progress.status.error }}<div v-if="progress.status.conflict"><button @click="resolveProgress(false)">载入服务端进度</button><button @click="resolveProgress(true)">保存本地进度</button></div><button v-else :disabled="progress.status.saving" @click="progress.retry">重试阅读记录</button></div>
-    <div class="reader-body">
+    <div class="reader-body" :class="{ 'qa-open': assistantOpen }">
       <ReaderPanel v-model:width="leftWidth" :resizable="true" :open="leftOpen" side="left" label="文献导航" @close="leftOpen = false"><div class="reader-panel-tabs"><button v-for="name in ['缩略图','大纲']" :key="name" :class="{ selected: leftPanel === name }" @click="leftPanel = name">{{ name }}</button></div><template v-if="pdf && leftOpen"><div v-if="leftPanel === '缩略图'" class="pdf-thumbnails"><PdfThumbnail v-for="number in count" :key="`${route.params.documentId}-${number}`" :pdf="pdf" :page-number="number" :current="current" @navigate="jump" /></div><template v-else><p v-if="outlineError || !outline.length" class="reader-panel-placeholder" role="status">{{ outlineError || '此 PDF 没有内置大纲' }}</p><PdfOutline v-else :key="String(route.params.documentId)" :items="outline" @navigate="navigateOutline" /></template></template></ReaderPanel>
       <div class="pdf-reading-region">
       <div v-if="showSaved" class="annotation-saved-toast" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#35a568"/><path d="m6.5 12 3.5 3.5 7.5-8" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>批注已保存</div>
@@ -811,7 +814,10 @@ onBeforeUnmount(() => {
           <PdfPage v-for="number in pages" :key="`${String(route.params.documentId)}-${mode}-${number}`" :pdf="pdf" :document-id="String(route.params.documentId)" :drawing-color="annotationColor" :drawing-width="drawingWidth" :drawing-opacity="drawingOpacity" :placement="placement" :page-number="number" :root="viewport" :scale="scale" :size="sizes[number - 1]!" :matches="matchesByPage.get(number) || []" :selected="selectedMatch" :source-highlight="sourceHighlight?.position.pageNumber===number ? sourceHighlight : null" :annotations="annotations?.state.items || []" :annotation-editor="editor && (editor.type==='freeText' || drawingTypes.includes(editor.type)) ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" :editing-active="!!editor" :selected-annotation="selectedAnnotation" :annotation-tool="group!=='阅读' ? annotationTool : ''" :annotation-enabled="group!=='阅读'" :annotation-group="group" @source-locate="sourceLocated" @annotation-draw="drawingCreated" @annotation-warning="notice=$event" @annotation-replace-asset="pickAsset(editor?.type==='signature' ? 'signature' : 'image')" @annotation-select="selectAnnotation" @annotation-place="placeAnnotation" @annotation-move="moveAnnotation" @annotation-edit="item => openEditor(item,false)" @annotation-draft="updateEditor" @annotation-save="saveEditor" @annotation-cancel="cancelEditor" @ready="pageReady" @failure="fail" />
         </div>
       </div>
+      <button v-if="pdf && !assistantOpen" type="button" class="qa-capsule" aria-label="打开文献阅读助手" aria-expanded="false" @click="qaPanel?.toggle()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="13" r="1.3" fill="currentColor"/><circle cx="15" cy="13" r="1.3" fill="currentColor"/><path d="M12 4v3M9 19v2M15 19v2M2 12h2M20 12h2" stroke="currentColor" stroke-width="1.6"/></svg><span>文献阅读助手</span></button>
       </div>
+      <QaAssistantPanel ref="qaPanel" @update:open="assistantOpen = $event" />
+      <button v-if="assistantOpen" type="button" class="qa-collapse" aria-label="收起阅读助手" title="收起阅读助手" @click="qaPanel?.toggle()"><ArrowRight /></button>
       <ReaderPanel :open="rightOpen" side="right" :label="rightPanel" :fixed-content="rightPanel === '批注列表'" :non-modal="rightPanel==='批注列表'" @close="closeRight"><template #header-actions><PdfDownloadMenu v-if="rightPanel==='批注列表'" class="pdf-export-panel-menu" :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" /></template><PdfExportStatus v-if="pdf && rightPanel==='批注列表'" :phase="exportPhase" :error="exportError" :conflict="exportConflict" @resolve="resolveExportDraft" @start="startExport" @cancel="cancelExport" @retry="requestExport" @reload="reloadExportSnapshot" /><PdfSearch v-if="pdf" v-show="rightPanel === '搜索'" :key="String(route.params.documentId)" :pdf="pdf" :selected="selectedMatch" @matches="matches = $event; selectedMatch = ''" @navigate="navigateMatch" /><AnnotationList v-if="annotations" v-show="rightPanel === '批注列表'" :items="annotations.state.items" :editor="editor?.type==='comment' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" @draft="updateEditor" @save="saveEditor" @cancel="cancelEditor" :has-backup="annotations.state.hasBackup" :has-pending="annotations.state.dirty && !annotations.state.error" @save-pending="annotations.flush" @export-backup="annotations.exportDraft" :document-id="String(route.params.documentId)" :selected="selectedAnnotation" @select="navigateAnnotation" @edit="openEditor" @remove="removeAnnotation" /></ReaderPanel>
       <section v-show="translationOpen || notesOpen" class="reader-extension-panels" :class="{ 'translation-open': translationOpen, 'notes-open': notesOpen }" aria-label="阅读扩展面板">
         <TranslationPanel ref="translationPanel" @update:open="translationOpen = $event" @save-to-note="openCapture" />

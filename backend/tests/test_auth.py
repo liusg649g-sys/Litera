@@ -15,7 +15,7 @@ def login(client, email="reader@example.com"):
     return client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
 
 def test_migration_creates_only_auth_and_p2a_tables(client):
-    assert set(inspect(engine).get_table_names()) == {"users", "sessions", "documents", "document_files", "alembic_version", "folders", "tags", "document_tags", "reading_progress", "cleanup_jobs", "annotations", "document_reader_state", "annotation_command_receipts", "reader_assets", "notes", "note_documents", "user_model_profiles"}
+    assert set(inspect(engine).get_table_names()) == {"users", "sessions", "documents", "document_files", "alembic_version", "folders", "tags", "document_tags", "reading_progress", "cleanup_jobs", "annotations", "document_reader_state", "annotation_command_receipts", "reader_assets", "notes", "note_documents", "user_model_profiles", "extraction_jobs", "extraction_results", "document_pages", "document_chunks", "qa_answers", "qa_indexes", "qa_chunk_vectors"}
     assert client.get("/api/v1/health").json() == {"status": "ok"}
 
 def test_register_hashes_password_and_does_not_auto_login(client):
