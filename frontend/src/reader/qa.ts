@@ -70,8 +70,10 @@ export function createQa(send: Send) {
     if (!documentId) { state.error = { status: 0, code: 'READER_UNAVAILABLE', message: '请先打开文献。' }; return }
     const contextRevision = readerRevision()
     if (retryOf) retryOf.loading = true
-    const message: QaMessage = retryOf || { id: ++sequence, mode, intent, question, answer: null, error: null, loading: true, pageNumber: pageNumber ?? null }
-    if (!retryOf) state.messages.push(message)
+    let message: QaMessage = retryOf || { id: ++sequence, mode, intent, question, answer: null, error: null, loading: true, pageNumber: pageNumber ?? null }
+    // Mutations must go through the reactive proxy: state.messages wraps raw
+    // objects on read, so writing to the raw object would never fire watchers.
+    if (!retryOf) { state.messages.push(message); message = state.messages[state.messages.length - 1] }
     abort()
     const controller = new AbortController(); active = controller
     const jobEpoch = epoch

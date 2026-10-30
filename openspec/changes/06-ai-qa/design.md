@@ -93,8 +93,9 @@
 
 ### D10: 新问答自动定位
 
-- 消息区 `.qa-messages` 自身滚动；每次 `messages` 追加一条（含 loading 态）后，`nextTick` 中把该条 `article` 用 `scrollIntoView({block:'start'})` 定位到消息区顶部，随后清除面板内其它滚动偏移。
-- 答案、证据不足或错误替换 loading 后再次定位同一条：若"问题 + 答案"整条能放进消息区则对齐该条顶部（两者都可见）；整条高于可视区时改为把 `.qa-answer` / `.qa-error` 顶部对齐到消息区顶部，避免只露出问题、答案仍需下滑。只影响最新一条，不重新排序或高亮历史消息。
+- 消息区 `.qa-messages` 自身滚动；每次 `messages` 追加一条（含 loading 态）后，`nextTick` 中对该条 `article` 执行定位。
+- 答案、证据不足或错误替换 loading 后再次定位同一条（用户确认口径）：整条（问题 + 答案）≤ 消息区高度时用 `scrollIntoView({block:'end'})` 对齐底部，问题与答案同时完整可见；高于可视区时用 `block:'start'` 对齐顶部，问题置顶、答案向下延续。只影响最新一条，不重新排序或高亮历史消息。
+- 答案/错误必须通过 `state.messages` 的响应式代理写入（`qa.ts` 入列后读回代理再赋值），否则 Vue 3 watcher 不触发、第二次定位失效。
 - 尊重 `prefers-reduced-motion`：改用 `behavior:'auto'`，避免动画。
 - 移除 4.2 中按 `intent` 自动滚动到方法/结论章节的 watch（快捷入口已删除，该分支不再可达）。
 

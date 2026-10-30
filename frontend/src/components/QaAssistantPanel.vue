@@ -41,24 +41,17 @@ async function jump(citation: QaCitation) {
   if (result.status !== 'ok') notice.value = result.message
 }
 
-// New questions and their results are positioned at the top of the message list
-// so the user never has to scroll manually to find what was just asked. When the
-// message (question + answer) is taller than the viewport, align the answer
-// instead, otherwise the answer stays below the fold.
+// Position the newest exchange without manual scrolling: when the whole message
+// (question + answer) fits the viewport, align its bottom so both are fully
+// visible; when it is taller than the viewport, align its top so the question
+// is pinned first and the answer continues below.
 function focusLatest() {
   const container = messagesEl.value
   const latest = container?.lastElementChild as HTMLElement | null
   if (!container || !latest) return
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  const behavior = reduced ? 'auto' : 'smooth'
-  const answer = latest.querySelector<HTMLElement>('.qa-answer, .qa-error')
-  if (answer) {
-    const box = container.getBoundingClientRect()
-    const fits = latest.getBoundingClientRect().top >= box.top - 4
-      && answer.getBoundingClientRect().bottom <= box.bottom + 4
-    if (!fits) { answer.scrollIntoView({ block: 'start', behavior }); return }
-  }
-  latest.scrollIntoView({ block: 'start', behavior })
+  const fits = latest.getBoundingClientRect().height <= container.clientHeight
+  latest.scrollIntoView({ block: fits ? 'end' : 'start', behavior: reduced ? 'auto' : 'smooth' })
 }
 watch(() => state.messages.length, () => { void nextTick(focusLatest) })
 watch(() => state.messages.at(-1)?.answer ?? state.messages.at(-1)?.error, () => { void nextTick(focusLatest) })
@@ -144,7 +137,6 @@ defineExpose({ toggle: () => qa.setOpen(!state.open), open: () => qa.setOpen(tru
                 </li>
               </ul>
             </details>
-            <p class="qa-meta">{{ message.answer.model || '后端模型' }} · 提取版本 {{ message.answer.extractionVersion }}</p>
           </div>
         </article>
       </div>

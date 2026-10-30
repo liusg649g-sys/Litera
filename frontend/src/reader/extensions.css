@@ -74,7 +74,6 @@
 .qa-page{align-self:flex-start;border:1px solid var(--litera-primary);color:var(--litera-primary);background:#fff;border-radius:10px;padding:1px 8px;font-size:11px;cursor:pointer}
 .qa-page:hover{background:var(--litera-primary-soft)}
 .qa-quote{font-size:12px;color:var(--litera-muted);overflow-wrap:anywhere}
-.qa-meta{font-size:11px;color:var(--litera-muted);margin:8px 0 0}
 .qa-input{border-top:1px solid var(--litera-border);padding-top:8px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
 .qa-input textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;max-height:160px;border:1px solid var(--litera-border);border-radius:8px;padding:8px;font:inherit;font-size:13px}
 .qa-input textarea:focus{outline:none;border-color:var(--litera-primary);box-shadow:0 0 0 2px var(--litera-primary-soft)}
