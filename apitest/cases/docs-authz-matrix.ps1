@@ -13,7 +13,9 @@ Check 'B reads A doc -> 404' $r1.Status 404
 $r2 = Api-Req $b 'GET' '/documents/00000000-0000-0000-0000-000000000000'
 Check 'B reads missing id -> 404' $r2.Status 404
 Check-True '404 body identical semantics' (($r1.Text -replace '"requestId":"[^"]+"','') -eq ($r2.Text -replace '"requestId":"[^"]+"','')) 'requestId excluded'
-$r3 = Api-Req $b 'PATCH' "/documents/$id" @{ title = 'hijacked' }
+$gA = Api-Req $a 'GET' "/documents/$id"
+$v = ($gA.Text | ConvertFrom-Json).version
+$r3 = Api-Req $b 'PATCH' "/documents/$id" @{ version = $v; title = 'hijacked' }
 Check 'B patches A doc -> 404' $r3.Status 404
 $g = Api-Req $a 'GET' "/documents/$id"
 Check-True 'A title unchanged' (($g.Text | ConvertFrom-Json).title -ne 'hijacked') ''

@@ -2,7 +2,7 @@
 . "$PSScriptRoot\..\lib\fixtures.ps1"
 $global:CaseName = 'extr-stop-start'
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Skip-Case 'needs docker CLI on host' }
-docker compose info 2>$null | Out-Null
+docker compose ps extraction-worker 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { Skip-Case 'docker compose stack not reachable from host' }
 $c = Require-AccountA
 docker compose stop extraction-worker | Out-Null

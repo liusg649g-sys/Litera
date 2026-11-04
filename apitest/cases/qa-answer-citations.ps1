@@ -7,13 +7,14 @@ $up = Upload-Pdf $c $pdf
 $id = ($up.Text | ConvertFrom-Json).id
 $final = Wait-DocStatus $c $id 'completed' 120
 if (-not $final -or $final.parseStatus -ne 'completed') { Remove-Doc $c $id; Skip-Case 'extraction not completed; QA needs chunks' }
-Start-Sleep -Seconds 20  # allow embedding index sweep to pick up chunks
-$body = @{ mode = 'question'; question = 'What is the zebra-telegraph method?' }
-$r = Api-Req $c 'POST' "/documents/$id/qa" $body
-Check 'ask 200' $r.Status 200
-$j = $r.Text | ConvertFrom-Json
-Check-True 'answer non-empty' ($j.answer -and $j.answer.Length -gt 10) ''
-Check-True 'citations present with pageNumber' ($r.Text -match '"citations"' -and $r.Text -match '"pageNumber"') ''
-Check-True 'answer mentions zebra-telegraph' ($j.answer -match 'zebra') ''
+$r = Ask-Qa $c $id 'What is the zebra-telegraph method?' 180
+Check 'ask 200 (after index build retries)' $r.Status 200
+if ($r.Status -eq 200) {
+    $j = $r.Text | ConvertFrom-Json
+    Check-True 'answer non-empty' ($j.answer -and $j.answer.Length -gt 10) ''
+    Check-True 'citations present with pageNumber' ($r.Text -match '"citations"' -and $r.Text -match '"pageNumber"') ''
+    Check-True 'answer mentions zebra-telegraph' ($j.answer -match 'zebra') ''
+    Check-True 'status answered' ($j.status -eq 'answered') "status=$($j.status)"
+}
 Remove-Doc $c $id
 Complete-Case

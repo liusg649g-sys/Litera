@@ -7,11 +7,12 @@ $up = Upload-Pdf $c $pdf
 $id = ($up.Text | ConvertFrom-Json).id
 $final = Wait-DocStatus $c $id 'completed' 120
 if (-not $final -or $final.parseStatus -ne 'completed') { Remove-Doc $c $id; Skip-Case 'extraction not completed' }
-Start-Sleep -Seconds 20
-$body = @{ mode = 'question'; question = 'What is the weather forecast for Mars tomorrow?' }
-$r = Api-Req $c 'POST' "/documents/$id/qa" $body
-Check 'ask 200' $r.Status 200
-$j = $r.Text | ConvertFrom-Json
-Check-True 'status insufficient_evidence (no hallucination)' ($j.status -eq 'insufficient_evidence') "status=$($j.status)"
+$r = Ask-Qa $c $id 'What is the weather forecast for Mars tomorrow?' 180
+Check 'ask 200 (after index build retries)' $r.Status 200
+if ($r.Status -eq 200) {
+    $j = $r.Text | ConvertFrom-Json
+    Check-True 'status insufficient_evidence (no hallucination)' ($j.status -eq 'insufficient_evidence') "status=$($j.status)"
+    Check-True 'no citations attached to refusal' ($r.Text -match '"citations"\s*:\s*\[\s*\]') ''
+}
 Remove-Doc $c $id
 Complete-Case

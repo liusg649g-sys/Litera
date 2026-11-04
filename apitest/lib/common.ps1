@@ -108,6 +108,20 @@ function Remove-Doc {
     Api-Req $Client 'DELETE' "/trash/documents/$Id" | Out-Null
 }
 
+function Ask-Qa {
+    # QA returns 503 QA_INDEX_BUILDING until the background embedding sweep finishes.
+    # Retry the same question until 200 or timeout; return the final response.
+    param($Client, [string]$Id, [string]$Question, [int]$TimeoutSec = 150)
+    $t0 = Get-Date
+    $last = $null
+    while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
+        $last = Api-Req $Client 'POST' "/documents/$Id/qa" @{ mode = 'question'; question = $Question; contextRevision = 0 }
+        if ($last.Status -eq 200) { return $last }
+        Start-Sleep -Seconds 10
+    }
+    return $last
+}
+
 function Wait-DocStatus {
     param($Client, [string]$Id, [string]$Want, [int]$TimeoutSec = 90)
     $t0 = Get-Date

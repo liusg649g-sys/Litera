@@ -12,12 +12,17 @@ Check 'create note 201' $p.Status 201
 $g = Api-Req $c 'GET' "/notes/$noteId"
 Check 'read note 200' $g.Status 200
 Check-True 'title persisted' (($g.Text | ConvertFrom-Json).title -eq $title) $title
-$u = Api-Req $c 'PATCH' "/notes/$noteId" @{ content = 'autosaved v2' }
+$v1 = ($g.Text | ConvertFrom-Json).version
+$u = Api-Req $c 'PATCH' "/notes/$noteId" @{ version = $v1; content = 'autosaved v2' }
 Check-Match 'autosave PATCH 2xx' "$($u.Status)" '^2\d\d$'
 $g2 = Api-Req $c 'GET' "/notes/$noteId"
 Check-True 'content updated' ($g2.Text -match 'autosaved v2') ''
-$d = Api-Req $c 'DELETE' "/notes/$noteId"
-Check-Match 'delete 2xx' "$($d.Status)" '^2\d\d$'
+Check-True 'version incremented' ((($g2.Text | ConvertFrom-Json).version) -gt $v1) "was $v1"
+$v2 = ($g2.Text | ConvertFrom-Json).version
+$stale = Api-Req $c 'PATCH' "/notes/$noteId" @{ version = $v1; content = 'stale' }
+Check 'stale version -> 409' $stale.Status 409
+$d = Api-Req $c 'DELETE' "/notes/$noteId`?version=$v2"
+Check 'delete 204' $d.Status 204
 $g3 = Api-Req $c 'GET' "/notes/$noteId"
 Check 'deleted -> 404' $g3.Status 404
 Remove-Doc $c $docId
