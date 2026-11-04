@@ -4,9 +4,9 @@
 
 项目围绕文献管理、PDF 阅读、翻译、笔记、信息提取和 AI 问答组织六个模块，使用 Litera 自有品牌及北大红主题。
 
-## 翻译与笔记：已验收，GitHub交付待确认（2026-10-26）
+## 翻译与笔记：已验收（2026-10-26）
 
-功能3/4及个人模型已在统一5183完成用户五项验收。包含手动/实时双向翻译、模型设置/安全存储、笔记M:N/自动保存/来源块/搜索/PDF跳页与精确高亮；AI回答保存目前为已验收的固定Mock适配，真实QA由06负责人提供。当前所有改动仍未提交/推送。
+功能3/4及个人模型已完成用户五项验收。包含手动/实时双向翻译、模型设置/安全存储、笔记M:N/自动保存/来源块/搜索/PDF跳页与精确高亮。题录自动提取（05）与 AI 问答（06）已在本仓库实现并通过真实 Compose 环境验证（2026-11-04），全部改动已提交 main。
 
 - [GitHub交付范围、测试与PR方案](docs/delivery/github-delivery.md)
 - [Windows/Linux安全部署、主密钥和迁移](docs/delivery/deployment.md)
@@ -19,7 +19,7 @@
 
 八类规范按老师顺序整理：[规范索引](docs/standards/README.md)。涵盖产品、后端、安全、测试、部署运维、AI应用、数据、评审与完成定义。长期入口为[AGENTS.md](AGENTS.md)，重复审查使用[规范审查技能](.agents/skills/litera-standards-review/SKILL.md)。
 
-规范中的实现状态以本仓源码为准。翻译、笔记与个人模型模块目前仅在Litera-test副本实现，尚未合入本仓库；自动提取和AI问答仍待接入。
+规范中的实现状态以本仓源码为准。六个模块均已合入本仓库：翻译、笔记、个人模型、题录自动提取（MySQL 队列表 + 独立 extraction-worker 异步消费）与 AI 问答（RAG 检索 + 引用核验）均已实现并验收。
 
 密钥泄露由部署实例持有人按[处置与轮换步骤](docs/standards/3-security.md#机密泄露处置与轮换)处理，不能只删除文件或重生成.env。适用测试/检查入口见[测试规范](docs/standards/4-testing.md)与[评审规范](docs/standards/8-review-specification.md#3-当前可用检查入口)，未合并的脚本不可直接照抄执行。
 
@@ -30,7 +30,9 @@
 | 访客 | 注册、登录 | /register、/login，两仓已有 |
 | 普通用户 | 本人PDF管理、分类检索、手工题录、回收站 | /library，两仓已有 |
 | 普通用户 | 阅读/搜索/批注/导出、资料/密码 | /reader/:documentId、/profile，两仓已有 |
-| 普通用户 | 选区翻译、M:N笔记/来源定位、个人模型 | Litera-test阅读面板及/settings/ai；原Litera未合并 |
+| 普通用户 | 选区翻译、M:N笔记/来源定位、个人模型 | 阅读面板及/settings/ai |
+| 普通用户 | 上传后自动提取题录、失败重试 | 文献详情页自动回填（异步队列） |
+| 普通用户 | 单篇文献 AI 问答、引用跳转 | 阅读页问答面板（RAG + 证据不足拒答） |
 
 本期无管理员/跨用户共享；页面四状态、术语、交互约束见[产品规范](docs/standards/1-product.md)。模型未配置/环境未启用须明确提示。
 
@@ -38,7 +40,10 @@
 
 - **账号与文献管理**：注册/登录、个人资料与修改密码，PDF导入/原件下载、手工题录编辑、文件夹/标签、筛选检索、最近阅读和回收站。
 - **PDF阅读与编辑**：三种阅读视图、缩放/搜索/选区、阅读进度、多标签、13类批注/形状/插入对象，以及带批注PDF导出。导出生成独立文件，保留原始PDF，不承诺第三方软件原生可编辑。
-- **尚未接入本仓库**：翻译、笔记、个人模型、题录自动提取和AI问答；不支持OCR、加密PDF、跨用户共享及文件夹/批量导入。
+- **翻译与笔记**：选区手动/实时双向翻译，笔记 M:N 关联多篇文献、来源块跳页与精确高亮，个人模型 Key 由本人显式输入并加密保存。
+- **题录自动提取**：上传 PDF 后同步执行元数据/正则两层提取并立即返回；LLM 层写入 `extraction_jobs` 队列表，由独立 `extraction-worker` 容器以 `FOR UPDATE SKIP LOCKED` 抢占消费，指数退避重试、崩溃启动恢复，完成后自动回填详情页。
+- **AI 文献问答**：基于 document_pages/chunks 的 RAG 检索，答案带页码引用；检索不足时明确拒答（insufficient_evidence）而不编造。
+- **不支持**：OCR、加密PDF、跨用户共享及文件夹/批量导入。
 
 具体交付状态、验收边界和历史问题见[开发交接](HANDOFF.md)及[开发记录](docs/development/2026-10-20-delivery.md)。
 
@@ -55,7 +60,7 @@ python scripts\init_env.py
 docker compose up -d --build --wait
 ```
 
-初始化脚本为 MySQL 与会话生成随机秘密，写入已被忽略的 `.env`，不会覆盖已有文件。首次构建会拉取缺失的基础镜像；后续修改代码后重新执行同一条 Compose 命令更新镜像和服务。API 启动时自动执行 `alembic upgrade head`，无需另建业务表。
+初始化脚本为 MySQL 与会话生成随机秘密，写入已被忽略的 `.env`，不会覆盖已有文件。首次构建会拉取缺失的基础镜像；后续修改代码后重新执行同一条 Compose 命令更新镜像和服务。API 启动时自动执行 `alembic upgrade head`，无需另建业务表。Compose 共四个服务：db（MySQL）、api（FastAPI）、extraction-worker（题录 LLM 层异步消费者）与 nginx（唯一对外入口）。
 
 访问 [登录页](http://localhost:8080/login) 或 [注册页](http://localhost:8080/register)，自行注册账号。注册成功后需要登录，没有预置演示账号。API 健康检查为 [health](http://localhost:8080/api/v1/health)，接口文档为 [API docs](http://localhost:8080/api/docs)。
 
@@ -76,6 +81,7 @@ docker compose up -d --build --wait
 ```cmd
 docker compose ps
 docker compose logs --tail=100 api
+docker compose logs --tail=100 extraction-worker
 docker compose logs --tail=100 db
 docker compose down
 ```
@@ -114,6 +120,24 @@ MySQL版本测试由你在Compose服务启动后手动执行，使用独立 `lit
 docker compose exec -T api python -m pytest -q
 ```
 
+题录异步队列的三条验收判据与回归用例在 `backend/tests/test_metadata_extraction_async.py`（P95 响应时间、worker 停止不丢任务、重复提交幂等、上传响应 parseStatus 回归）。运行需先把测试 PDF 语料放入 `backend/tests/fixtures/pdfs/`；判据二/三需宿主机 Docker CLI，详见文件头注释。
+
+安全检查一键入口（覆盖 SEC-05 密钥扫描与 SEC-06 依赖审计）：
+
+```cmd
+make check-security
+```
+
+无 make 环境时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1`。发现明文密钥以退出码 1 失败；依赖通报按 reports/security-baseline.md 的登记处置打 WARNING，基线与首跑输出见该文件。
+
+业务验收跑批（黑盒打真实 Compose 服务，用例即脚本）：
+
+```cmd
+make check
+```
+
+用例在 `apitest/cases/`（auth/docs/anno/extr/trans/notes/qa/x 八组），需先在 `apitest/config.local.ps1`（已 gitignore）填测试账号；输出汇总 GREEN/RED/SKIP 并落盘 `apitest/reports/`。详见 [apitest/README.md](apitest/README.md)。
+
 测试会清理目标测试库中的数据，运行前须核对实例及数据库隔离；代码校验数据库名并拒绝非litera_test库。初次MySQL初始化会创建测试库；旧卷缺少测试库时见[测试库说明](docs/development/p2-b.md)。SQLite结果不能替代真实MySQL验证。
 
 前端构建、基础测试与浏览器验收（需要 Node 24+；端到端测试需要已启动的服务）：
@@ -144,7 +168,7 @@ npm run dev -- --port 5173 --strictPort
 
 ## 技术方案与分工
 
-采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js 6.4.299用于阅读；pypdf 6.20.1 + ReportLab 4.4.10用于带批注PDF导出。PyMuPDF仅供隔离开发渲染验证，LLM API + RAG属于后续规划。
+采用 B/S 架构、前后端分离：Vue 3 + TypeScript + Element Plus，FastAPI + SQLAlchemy/Alembic，MySQL，Docker Compose + Nginx。PDF.js 6.4.299用于阅读；pypdf 6.20.1 + ReportLab 4.4.10用于带批注PDF导出。题录提取采用 MySQL 队列表 + 独立 worker 的异步任务与消息队列架构（不引入 Redis/RabbitMQ）；AI 能力经 OpenAI 兼容网关接入，问答为 Embedding + RAG 检索。PyMuPDF仅供隔离开发渲染验证。
 
 | 成员 | 负责模块 |
 | --- | --- |
@@ -154,7 +178,7 @@ npm run dev -- --port 5173 --strictPort
 
 ## 仓库与文档
 
-`frontend/` 为前端，`backend/` 为认证、文献管理后端与迁移，`scripts/` 为本地配置/测试库初始化脚本，`docs/design/` 为总体设计，`docs/development/` 为阶段验收记录，`openspec/changes/` 为六模块规划。前后端依赖分别锁定于package-lock.json和requirements.txt。
+`frontend/` 为前端，`backend/` 为认证、文献管理、翻译笔记、提取与问答后端及迁移（含 extraction_worker 队列消费者），`scripts/` 为本地配置/测试库初始化脚本，`docs/design/` 为总体设计，`docs/development/` 为阶段验收记录，`openspec/changes/` 为六模块规划与实施记录。前后端依赖分别锁定于package-lock.json和requirements.txt。
 
 - [新会话开发交接](HANDOFF.md)
 - [六模块总览](openspec/changes/README.md)
