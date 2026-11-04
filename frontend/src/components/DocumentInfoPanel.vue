@@ -118,8 +118,9 @@ function dateLabel(value: string) { return new Date(value).toLocaleString('zh-CN
 // 本模块只负责：processing 时轮询刷新详情、失败/警告展示、手动重试。
 const candidates = ref<ExtractionCandidatesDTO | null>(null)
 const polling = ref(false), retrying = ref(false)
-let pollTimer: number | undefined, pollCount = 0
-const POLL_MAX = 12, POLL_INTERVAL = 3000
+let pollTimer: number | undefined, pollDeadline = 0
+// 按总时长而非次数限制：批量上传时队列串行消费，单篇可能排队较久，放宽到 3 分钟
+const POLL_TIMEOUT_MS = 180_000, POLL_INTERVAL = 3000
 async function pollCandidates(id: string) {
   // 轮询 documents 刷新详情展示（sync 内部在 dirty/saving 时跳过，不打断编辑）；
   // candidates 端点仅用于提取告警与失败状态。
@@ -128,13 +129,12 @@ async function pollCandidates(id: string) {
     if (documentId.value !== id) return
     candidates.value = result
     sync(document)
-    if (document.parseStatus === 'processing' && pollCount < POLL_MAX) {
-      pollCount++
+    if (document.parseStatus === 'processing' && Date.now() < pollDeadline) {
       pollTimer = window.setTimeout(() => void pollCandidates(id), POLL_INTERVAL)
     } else polling.value = false
   } catch { polling.value = false }
 }
-function startPolling(id: string) { stopPolling(); pollCount = 0; polling.value = true; void pollCandidates(id) }
+function startPolling(id: string) { stopPolling(); pollDeadline = Date.now() + POLL_TIMEOUT_MS; polling.value = true; void pollCandidates(id) }
 function stopPolling() { if (pollTimer !== undefined) clearTimeout(pollTimer); pollTimer = undefined; polling.value = false }
 async function retryExtraction() {
   if (!selected.value || retrying.value) return

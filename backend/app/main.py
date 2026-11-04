@@ -29,15 +29,9 @@ from starlette.concurrency import run_in_threadpool
 
 @asynccontextmanager
 async def lifespan(app):
-    # 启动时清理 orphan extraction jobs（进程重启导致 processing 状态丢失）
-    try:
-        from .database import SessionLocal
-        from .extraction import run_startup_scan
-        _db = SessionLocal()
-        run_startup_scan(_db)
-        _db.close()
-    except Exception as exc:
-        logging.warning("Startup orphan extraction scan failed: %s", exc)
+    # extraction-worker 进程独立消费 queued job，重启 api 不再置 processing 为 failed
+    # （queued 由 worker 继续消费，processing 由 _claim_job 的 FOR UPDATE SKIP LOCKED 处理：
+    #  行已被锁即跳过，不会被重复执行）。旧的 run_startup_scan 已移除。
 
     async def collect():
         while True:

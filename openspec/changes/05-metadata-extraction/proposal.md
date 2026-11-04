@@ -10,6 +10,7 @@
 - **版本化页文本与分块**：新增 `document_pages` 表按物理 1-based 页码存储 pypdf 提取的原始文本，新增 `document_chunks` 表按每页内段落切分（200–500 字符/块），保持稳定的 `char_offset` 供后续问答的"回答→高亮原文"使用。
 - **自动回填与人工校正**：提取结果自动写入正式题录后在 `DocumentInfoPanel` 详情视图直接展示（纯字段值，无来源标注）；用户通过"编辑题录"修改后经已有 PATCH `/api/v1/documents/{id}` 保存，复用 01 的 `DocumentPatch` 契约，不引入新保存入口。字段级保护：自动写入只更新仍为上传初始值或上一次自动写入值的字段，用户已修改的字段不被覆盖。
 - **Open Questions 关闭**：原设计中的 Q5（字段识别策略、低置信阈值、并发参数）在本次实现中明确：DOI 用正则强校验、title 取来源中最高置信、LLM 调用限流复用 translations.py 的 `BoundedSemaphore(2)`。
+- **异步队列改造（追加）**：Layer 3 从进程内 `asyncio.create_task` 改为独立 worker 消费 MySQL 队列表。上传端点同步完成 Layer 1+2 后，ExtractionJob 状态置为 queued；独立的 extraction-worker 进程循环 `SELECT ... FOR UPDATE` 抢活，执行 Layer 3 LLM 调用。失败自动指数退避重试（最多 3 次），重试耗尽后 job 置 failed 并保留 error_code；进程重启后 queued/job 继续消费，不丢失。ExtractionJob 表的 status/attempts/幂等检测（documentId+fileHash）已经是队列表的基础设施，本次把消费者从 api 进程迁到独立 worker，零新中间件。
 
 ## Capabilities
 
@@ -24,7 +25,9 @@
 ## Impact
 
 - **后端**：新增 `backend/app/metadata_extraction.py`（三层提取核心）、`backend/app/extraction.py`（API 路由）；改造 `backend/app/documents.py` 的上传端点使其在成功后触发同步 Layer 1+2；新增 Alembic 迁移 0009_extraction_jobs_results_pages_chunks.py；新增 extraction 限流、并发和错误码。
+- **后端追加（异步队列）**：新增 `backend/app/extraction_worker.py` 独立 worker 进程入口（MySQL 抢占式消费 ExtractionJob、指数退避重试、attempts 递增、失败记录 error_code）；改造 `documents.py` 的 Layer 3 触发逻辑从 `asyncio.create_task` 改为仅写 job 置 queued；移除 lifespan 里 `run_startup_scan` 把 processing 置 failed 的代码（改为 worker 自行接管）。
 - **前端**：`DocumentInfoPanel.vue` 详情视图直接展示自动回填后的题录；提取期间轮询 documents 端点刷新；保留提取失败告警与手动重试。
-- **数据库**：新增 4 张表（extraction_jobs、extraction_results、document_pages、document_chunks），与 docs/design/data-model.md 规划一致。
+- **数据库**：新增 4 张表（extraction_jobs、extraction_results、document_pages、document_chunks），与 docs/design/data-model.md 规划一致；ExtractionJob 表追加 `next_retry_at` 列（指数退避用），其余列状态机不变。
 - **依赖**：无需新增 pip 包；pypdf 已在 requirements.txt 中；course-chat 模型配置复用 .env 的 `AI_*` 变量和 `ModelService` 基础设施。
+- **部署追加（异步队列）**：compose.yaml 拆出 `extraction-worker` 服务（与 api 同镜像、entrypoint 指向 `extraction_worker.py`）；零新中间件（MySQL 本身做队列，不引入 Redis/RabbitMQ）；api 容器不再承担 Layer 3 执行职责，LLM 并发槽从 api 进程内 BoundedSemaphore(2) 迁移为 worker 独占（初始值 2，避免和翻译抢占后可独立调大）。
 - **负责人**：Jialu Ma；模块 06（AI 问答）将消费 `document_pages` / `document_chunks` 作为输入，但不在本次实现范围内。

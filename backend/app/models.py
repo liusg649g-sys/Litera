@@ -224,6 +224,7 @@ class ExtractionJob(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_code: Mapped[str | None] = mapped_column(String(64))
     version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

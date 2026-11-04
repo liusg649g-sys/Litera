@@ -18,10 +18,10 @@
 
 **Non-Goals:**
 - 不引入 OCR 处理扫描 PDF（无文字层的 PDF 标记警告，不伪造文本）
-- 不实现后台 worker 进程或事件总线（Layer 3 用 `asyncio.create_task` fire-and-forget）
 - 不实现 RAG embedding 或问答本身（06 的领域）
 - 不替换 GROBID 等外部专业工具（依赖 course-chat，已在上游验证可用）
 - 不修改 01 的上传契约或 02 的阅读器渲染逻辑
+- 不引入 Redis/RabbitMQ 等新中间件（队列由 MySQL ExtractionJob 表实现）
 
 ## Decisions
 
@@ -39,19 +39,38 @@
 - 纯 GROBID：需要额外部署 GROBID 服务（~1GB Docker 镜像 + Java 运行时），本次 11 合不上
 - 纯 LLM：成本略高 + 幻觉风险 + 速度不能保证 < 3 秒
 
-### D2: 同步 Layer 1+2 + 异步 Layer 3 触发
+### D2（修订，2026-11-04）: MySQL 队列表 + 独立 worker 进程
 
-**选择**：上传端点在同一个 HTTP 请求内同步执行 Layer 1+2（不阻塞响应时长），然后用 `asyncio.create_task()` fire-and-forget 提交 Layer 3。前端通过轮询 `GET /api/v1/documents/{id}` 刷新详情页展示；`extraction-candidates` 端点仅用于失败状态与告警查询。
+**选择**：上传端点在同一个 HTTP 请求内同步执行 Layer 1+2（不阻塞响应时长），然后写入 ExtractionJob 置 `status=queued`、`next_retry_at=now()`；独立的 `extraction-worker` 进程循环 `SELECT ... FOR UPDATE` 抢占 queued job，执行 Layer 3，成功置 completed 并发布 Layer 1+2 自动回填；失败按 `attempts` 递增后指数退避（5s → 1min → 5min，最多 3 次），重试耗尽置 failed。进程启动时无需 scan，queued job 立即被消费。
 
-**原因**：
-- 不阻塞上传响应：上传成功立即返回 201 + `parseStatus=processing` + 部分候选
-- 不引入 Celery/RQ/独立 worker 进程（增加运维复杂度）
-- `asyncio.create_task` 在 FastAPI lifespan 内生命周期管理足够，进程重启时未完成的 job 自动标记 failed 等待重试
-- 前端轮询实现简单（2s 间隔 × 最多 10 次 = 20s 内完成或放弃），不需要 SSE/WebSocket 基础设施
+**修订原因（推翻原 D2 的 create_task 选择）**：
+- 原方案 `asyncio.create_task` 的真实问题在实现中暴露：容器重启时未完成的 Layer 3 任务**直接丢失**（api 进程内任务不持久化），之前靠 lifespan 启动 scan 把 processing 置 failed 等待用户手动重试——这是用户体验上的硬伤
+- 网关 429/504 等瞬时失败没有自动退避，只能等用户手动重试
+- FastAPI 同步 `def` 端点里没有事件循环，曾出现过 `RuntimeError: asyncio.get_event_loop()`，改 async def 后 AnyIO 线程池里跨 await 的 ORM identity map 还会脏读（已在 5.x 修复但根本原因没消除）
+- ExtractionJob 表已有 status/attempts/幂等检测（documentId+fileHash）和 cleanup_jobs 的队列表范式可复用，迁移成本远低于新引入 Celery/RQ/Redis
 
-**替代方案**：
-- 全部同步等待：用户上传 PDF 后被迫等待 2-5s LLM 响应，体验差
-- 独立 worker 进程：额外 Docker 服务 + 进程间通信 + 进程重启恢复，对本次 MVP 过重
+**替代方案（为什么不选）**：
+- Redis Stream / RQ：需要新中间件，进程间通信、连接池、部署运维成本，对课程项目规模过重
+- Celery：比 RQ 更重，需要 broker + result backend 两个服务
+- 继续用 `asyncio.create_task` 加持久化任务表：本质上就是把 worker 逻辑塞进 api 进程，重启丢任务和限流无退避的问题仍然存在，且 api 和 worker 并发抢占 LLM 槽
+
+**核心工作流（修订后）**：
+```
+POST /documents → 同步 Layer 1+2 → persist pages/chunks/results → 置 doc.parseStatus=processing
+              ↓
+     INSERT extraction_job (status=queued, next_retry_at=now, attempts=0)
+              ↓   (返回上传成功 201)
+extraction-worker 循环:
+  SELECT * FROM extraction_jobs
+    WHERE status=queued AND next_retry_at <= NOW()
+    LIMIT 1 FOR UPDATE SKIP LOCKED
+  UPDATE SET status=processing WHERE id=:id
+  → 执行 Layer 3
+  → 成功: 合并回填 + 置 completed
+  → 失败: attempts++
+           IF attempts <= 3: next_retry_at = now + 2^attempts * 5s, 置回 queued
+           ELSE: 置 failed, errorCode = MODEL_QUOTA_LIMITED / MODEL_TIMEOUT / ...
+```
 
 ### D3: 提取结果自动回填正式题录，候选表保留追溯
 
@@ -102,13 +121,28 @@
 - 正则匹配 "Journal of XXX" / "Proceedings of XXX" 模式：误判率高
 - 完全依赖 LLM：能补全但 confidence 较低，需人工确认
 
+### D7（新增，2026-11-04）: 用现有 ExtractionJob 表做队列表，不引入新中间件
+
+**选择**：直接用 `extraction_jobs` 表作为队列存储，worker 用 MySQL `SELECT ... FOR UPDATE SKIP LOCKED` 抢占；同项目 `cleanup_jobs` 表已经采用相同范式（status + error_code + 状态机），本次与其对齐。ExtractionJob 表追加 `next_retry_at DATETIME` 列用于指数退避调度，其余列结构不变。
+
+**原因**：
+- ExtractionJob 已具备队列表所需的全部字段：`status`（queued/processing/completed/failed）、`attempts`（重试计数）、幂等检测（documentId + fileHash）、error_code（失败原因）。只需加一个 `next_retry_at` 即可支持调度
+- cleanup_jobs 同项目已验证"MySQL 当队列"在实际环境可行，没有引入任何新依赖
+- 课程项目规模（单用户或小团队、并发上传不超过 5-10）MySQL 队列完全够用，SELECT FOR UPDATE SKIP LOCKED 在 MySQL 8.4 支持良好
+- 部署零变更：compose 只拆一个新 service 用同镜像换 entrypoint，不需要新加 Redis/RabbitMQ 容器
+
+**替代方案**：
+- Redis Stream / RQ：多一个中间件 + 进程间通信 + 连接池管理，课程项目过重
+- Celery：比 RQ 更重，需要 broker + result backend 双服务
+- 自研进程内任务表：本质上就是现在 D2 被推翻的方案，重启丢任务、没有退避重试的问题没解决
+
 ## Risks / Trade-offs
 
 | 风险 | 缓解 |
 |---|---|
 | 自动回填覆盖用户正在编辑的字段 | 字段级比较保护（仅更新仍为初始值/上次自动值的字段）+ PATCH version 乐观锁 |
-| course-chat 限额耗尽或响应慢导致 Layer 3 失败 | Layer 1+2 作为保底，失败时 warnings 明确告知用户；前端提示可稍后重试 |
-| `asyncio.create_task` 在进程重启时丢失未完成的 Layer 3 | 进程启动时扫描 processing 状态的 extraction_job，置为 failed 等待用户重试；不自动重跑避免重复请求 |
+| course-chat 限额耗尽或响应慢导致 Layer 3 失败 | worker 自动指数退避重试（3 次，最多 5min 后再试）；重试耗尽后 job 置 failed，Layer 1+2 字段仍有效；前端提示可手动重试立即插队 |
+| worker 进程崩溃 | MySQL 事务保障：worker 崩溃时 processing 行的锁自动释放，下次启动 queued/job 继续被消费；attempts 不递增，不浪费重试机会 |
 | 大 PDF（> 200 页）text extraction 较慢 | Layer 1+2 只看前 3 页（Layer 3 也只取前 3 页文本），document_pages 全量逐页提取但独立执行；如遇 > 50MB PDF 由 01 上传限制提前拦截 |
 | LLM 返回幻觉字段（如编造 DOI） | DOI、ISSN、year 都有正则强校验，不合规直接丢弃；title/journal 等文本字段标注 confidence=0.6 提示人工确认 |
 | module 06 对 document_chunks 格式有额外要求 | design 中 char_offset + pageNumber + chunkIndex 已覆盖"问答→高亮原文"所需最小字段；后续根据 06 需求增量调整 |
@@ -120,20 +154,24 @@
 
 1. **数据库迁移**：新增 Alembic 迁移 `0009_extraction_jobs_results_pages_chunks.py`，创建 4 张表，与 data-model.md 规划一致。执行前备份现有数据库卷。
 2. **后端模块**：实现 `metadata_extraction.py`（三层提取引擎 + 候选合并逻辑）、`extraction.py`（API 路由：手动触发、状态查询、候选查询、重试）。
-3. **上传端点改造**：`documents.py` 的 POST `/documents` 在成功后调用 `extract_service.trigger_sync_layers(doc_id, file_hash, page_count)` 同步 Layer 1+2，然后 `asyncio.create_task(trigger_layer3(...))`。
+3. **上传端点改造**：`documents.py` 的 POST `/documents` 在成功后调用 `extract_service.trigger_sync_layers(doc_id, file_hash, page_count)` 同步 Layer 1+2，然后写入 ExtractionJob 置 `status=queued`，**不再** `asyncio.create_task`。
 4. **前端改造**：`DocumentInfoPanel.vue` 详情视图直接展示自动回填结果，上传后轮询 documents 端点刷新；保留提取失败告警与手动重试。
-5. **集成测试**：上传 3-5 份真实 PDF，验证三层输出合并、候选展示、校正保存、失败重试全链路。
+5. **worker 进程**：新增 `backend/app/extraction_worker.py` 独立入口，MySQL 抢占式消费 Layer 3 + 指数退避重试；compose.yaml 拆出 `extraction-worker` 服务（与 api 同镜像、换 entrypoint）。
+6. **api 进程瘦身**：移除 lifespan 里把 processing 置 failed 的 startup scan（worker 接管）；api 进程不再承担 Layer 3 执行职责，LLM 并发槽从 `BoundedSemaphore(2)` 迁移为 worker 独占。
+7. **集成测试**：上传 3-5 份真实 PDF，验证三层输出合并、候选展示、校正保存、失败重试全链路。
 
 ### 回滚策略
 
 - 禁用触发：在 `.env` 中增加 `EXTRACTION_ENABLED=false` 开关，关闭自动触发；手动端点仍可用。
 - 保留已生成的数据：extraction_* 表不删除，已保存的正式题录不受影响。
 - 恢复数据卷：如迁移导致数据库损坏，恢复 MySQL 命名卷备份，回到迁移前状态。
+- worker 降级：worker 服务停止后 queued job 积压但不丢，手动触发 API 端点可直接执行 Layer 3（绕过 worker）。
 
 ### 部署注意
 
 - 新增的 4 张表需要 Alembic 迁移，Compose 启动时自动执行 `alembic upgrade head`（与现有流程一致）
-- Layer 3 异步任务依赖 API 容器存活，容器重启时 processing 中的 job 会在启动后被扫描置为 failed
+- ExtractionJob 表需追加 `next_retry_at DATETIME` 列（异步改造追加，已有 job 填默认 NOW()）
+- compose.yaml 需新增 `extraction-worker` 服务，depends_on db（健康检查通过后启动）；api 服务不再需要 Layer 3 相关的 LLM 并发槽，worker 独占 2 槽
 - Docker 容器内需要能访问 `https://ai-gateway.devops.hello1023.com/v1`（已验证可达）
 
 ## Open Questions

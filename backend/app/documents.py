@@ -215,6 +215,10 @@ def save_upload(file, owner_id, db, folder_id=None):
             doc_refreshed = db.get(Document, document_id)
             job = create_extraction_job(db, owner_id, document_id, file_hash)
             merged = persist_extraction(db, job, doc_refreshed, layer1, layer2, page_texts)
+            # Layer 3 已入队等 worker 消费；置 processing 让前端进入轮询，直到 worker 置 completed/failed
+            if doc_refreshed is not None:
+                doc_refreshed.parse_status = "processing"
+                db.commit()
             extraction_version = job.version_id
             extraction_candidates = merged.get("metadata", {})
         except Exception as exc:
@@ -270,11 +274,7 @@ def create_document_router(current_session, require_csrf):
             if folder_id is not None and (not isinstance(folder_id, str) or not folder_id or len(folder_id) > 36 or len(form.getlist("folderId")) != 1):
                 reject(422, "INVALID_UPLOAD", "folderId 必须是文件夹 ID")
             dto, extraction_version = await run_in_threadpool(save_upload, form["file"], session.user_id, db, folder_id)
-            # 触发异步 Layer 3
-            if dto.get("extractionVersion"):
-                import asyncio
-                from .extraction import run_layer3_async
-                asyncio.create_task(run_layer3_async(dto["id"], session.user_id))
+            # Layer 3 现在由 extraction-worker 消费 queued job，api 进程不再 create_task
             return dto
 
     @router.get("/documents")

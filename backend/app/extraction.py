@@ -129,6 +129,7 @@ def create_extraction_job(db: Session, owner_id: str, document_id: str, file_has
         attempts=0,
         error_code=None,
         version_id=version_id,
+        next_retry_at=now,  # 立即让 worker 消费；重试时由 worker 更新
         created_at=now,
         updated_at=now,
     )
@@ -143,11 +144,12 @@ def persist_extraction(db: Session, job: ExtractionJob, doc: Document,
     """执行同步层（Layer 1+2）+ 写 document_pages / document_chunks / extraction_results。
 
     返回 merge 后的 dict（含 metadata / fieldSources / warnings / hasText）。
+
+    worker 接管 Layer 3 后，本函数**不再**推进 job.status（保持 queued 等 worker
+    消费）、不再 bump attempts（worker 负责）、也不手动置 completed。
+    仅负责：pages/chunks/results 的原子入库 + 更新 doc.extraction_version。
     """
     now = _now()
-    job.status = "processing"
-    job.attempts += 1
-    job.updated_at = now
 
     # 写页文本
     pages_inserted = 0
@@ -230,12 +232,11 @@ def persist_extraction(db: Session, job: ExtractionJob, doc: Document,
     ))
     db.flush()
 
-    # 临时置为 completed（Layer 3 回来时会更新）
-    job.status = "completed"
-    job.updated_at = now
+    # 原子入库 pages/chunks/results（Layer 1+2 已完成，Layer 3 交给 worker）。
+    # job.status 保持 queued，attempts 保持 0，next_retry_at 保持 now（worker 立即可消费）。
     db.commit()
 
-    # 更新 Document 的 extraction_version 和 parse_status
+    # 更新 Document 的 extraction_version；parse_status 不动，等 worker 最终完成时置 completed/failed。
     db.refresh(job)
     doc = db.get(Document, job.document_id)
     if doc:
@@ -251,7 +252,7 @@ def persist_extraction(db: Session, job: ExtractionJob, doc: Document,
             if old_result:
                 prev_candidates = old_result.candidates or {}
         doc.extraction_version = job.version_id
-        doc.parse_status = "processing"  # Layer 3 还在跑
+        # Layer 1+2 就先把已知的题录字段写入，便于用户立即看到
         backfill_document_metadata(db, doc, merged["metadata"], prev_candidates)
         doc.updated_at = now
         db.commit()
@@ -410,31 +411,47 @@ def create_extraction_router(current_session, require_csrf) -> APIRouter:
 
     @router.post("/documents/{document_id}/extract")
     async def trigger_extraction(document_id: str, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
-        """手动触发或重试提取。同步端点跑在线程池里没有事件循环，必须用 async def + create_task。"""
+        """手动触发或重试提取：把 job 置 queued + next_retry_at=NOW()，由 extraction-worker 立即消费。
+        api 进程不再同步执行 Layer 1+2 或 Layer 3（见 persist_extraction 注释）。
+        """
         doc, doc_file = owned_document(db, session.user_id, document_id)
         job = create_extraction_job(db, session.user_id, doc.id, doc_file.sha256)
-        if job.status == "completed":
-            # 复用已完成版本：pages/results 已在该版本下落库，只需重跑 Layer 3
-            # parse_status 置回 processing，让前端轮询能观察到这次重试
-            doc.parse_status = "processing"
-            doc.updated_at = _now()
-            db.commit()
-            asyncio.create_task(run_layer3_async(doc.id, session.user_id))
-            return {"status": "triggered", "version": job.version_id, "jobStatus": "processing"}
+        now = _now()
 
-        # 新任务（首次或上次失败）：完整重跑 Layer 1+2 并以新版本落库，保证 pages/results 与 version 一致
-        import io
-        from pypdf import PdfReader
-        try:
-            pdf_path = storage_path(doc_file.storage_key)
-            reader = PdfReader(io.BytesIO(pdf_path.read_bytes()))
-            layer1, layer2, page_texts, _ = run_sync_layers(reader)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail={
-                "code": "EXTRACTION_PDF_READ_ERROR", "message": f"PDF 读取失败: {exc}"})
-        persist_extraction(db, job, doc, layer1, layer2, page_texts)
-        asyncio.create_task(run_layer3_async(doc.id, session.user_id))
-        return {"status": "triggered", "version": job.version_id, "jobStatus": "processing"}
+        if job.status == "completed":
+            # 复用已完成版本：pages/results 已在该版本下落库，只需要重跑 Layer 3。
+            # 把旧 job 重新入队，attempts 保留原值（worker 消费时 bump），立即调度。
+            job.status = "queued"
+            job.next_retry_at = now
+            job.error_code = None
+            job.updated_at = now
+            doc.parse_status = "processing"
+            db.commit()
+            return {"status": "triggered", "version": job.version_id, "jobStatus": "queued"}
+
+        # 新任务（首次或上次失败）：create_extraction_job 已创建 queued job，
+        # persist_extraction 会写 Layer 1+2 的 pages/chunks/results，之后 job 保持 queued 等 worker。
+        # 但旧 job 可能没有 pages/chunks（上次失败在 Layer 1+2 之前），这里补跑一次。
+        has_pages = db.scalar(select(DocumentPage).where(
+            DocumentPage.owner_id == session.user_id,
+            DocumentPage.document_id == doc.id,
+            DocumentPage.extraction_version == job.version_id,
+        ).limit(1))
+        if not has_pages:
+            import io
+            from pypdf import PdfReader
+            try:
+                pdf_path = storage_path(doc_file.storage_key)
+                reader = PdfReader(io.BytesIO(pdf_path.read_bytes()))
+                layer1, layer2, page_texts, _ = run_sync_layers(reader)
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail={
+                    "code": "EXTRACTION_PDF_READ_ERROR", "message": f"PDF 读取失败: {exc}"})
+            persist_extraction(db, job, doc, layer1, layer2, page_texts)
+            # persist_extraction 里 job.next_retry_at 保持 create_extraction_job 写的 now，OK
+        doc.parse_status = "processing"
+        db.commit()
+        return {"status": "triggered", "version": job.version_id, "jobStatus": "queued"}
 
     @router.get("/documents/{document_id}/extraction-candidates")
     def get_candidates(document_id: str, session: LoginSession = Depends(current_session), db: Session = Depends(get_db)):

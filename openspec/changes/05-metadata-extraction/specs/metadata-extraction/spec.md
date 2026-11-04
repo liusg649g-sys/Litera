@@ -64,20 +64,62 @@
 - **WHEN** PDF 第 1 页为扫描件或纯图片，无 pypdf 可读取文本
 - **THEN** document_pages 中该页的 text 为空字符串，document_chunks 中该页无记录；extraction_results.warnings 记录页码和原因
 
-### Requirement: 异步 Layer 3 触发与前端刷新
-系统 SHALL 在同步完成 Layer 1+2 后立即返回上传成功并回填已得字段（title、doi、year 等），同时通过后台任务异步执行 Layer 3 LLM 提取。前端在上传成功后自动轮询文档详情端点（间隔 2-3 秒，最多 12 次）；Layer 3 完成后 abstract、keywords、journal 等字段自动回填并在详情页补全显示。
+### Requirement: 异步 Layer 3 队列消费与前端刷新
+
+系统 SHALL 在同步完成 Layer 1+2 后立即返回上传成功并回填已得字段（title、doi、year 等），同时写入 ExtractionJob 置 `status=queued`。独立的 `extraction-worker` 进程 SHALL 通过 MySQL `SELECT ... FOR UPDATE SKIP LOCKED` 抢占 queued job，执行 Layer 3 LLM 提取，成功置 completed 并发布 Layer 1+2 自动回填。失败 SHALL 按 attempts 递增后指数退避重试（5s → 1min → 5min，最多 3 次），重试耗尽置 failed 并保留 error_code。worker 进程重启后 queued job SHALL 继续被消费，不丢失。前端在上传成功后自动轮询文档详情端点（间隔 2-3 秒，最多 12 次）；Layer 3 完成后 abstract、keywords、journal 等字段自动回填并在详情页补全显示。
 
 #### Scenario: Layer 3 在超时前完成
 - **WHEN** course-chat 在 2–5 秒内返回有效 JSON
-- **THEN** 详情页在下次轮询时展示补全的 abstract、keywords；已由用户编辑过的字段保持原值不被覆盖
+- **THEN** queued job 在 worker 下一次 poll 中（≤ 1s）进入 processing，完成后置 completed；详情页在下次轮询时展示补全的 abstract、keywords；已由用户编辑过的字段保持原值不被覆盖
 
 #### Scenario: Layer 3 超过 30 秒或返回无效格式
 - **WHEN** course-chat 超时、返回非 JSON 或字段校验失败
-- **THEN** 后端将 Layer 3 结果标记为 failed，warnings 中记录原因；详情页展示 Layer 1+2 已回填的字段，不影响用户校正和保存
+- **THEN** worker 置 queued，attempts++，next_retry_at 计算为 now + 2^attempts * 5s；3 次重试耗尽后 job 置 failed，warnings 中记录原因；详情页展示 Layer 1+2 已回填的字段，不影响用户校正和保存
+
+#### Scenario: worker 进程崩溃后重启
+- **WHEN** worker 处理 Layer 3 过程中容器崩溃重启
+- **THEN** 该行的 MySQL 锁自动释放，status 停留在 processing；worker 启动时执行恢复例程 `_recover_interrupted_jobs()`，把所有 processing 孤儿行置回 queued 并立即重新调度（attempts 不递增），随后被正常消费至 completed
 
 #### Scenario: Layer 3 完成时用户已编辑部分字段
 - **WHEN** Layer 3 完成时用户已在前端手动修改 title 字段并保存
 - **THEN** Layer 3 自动回填跳过 title，仅更新其余未触碰字段；用户可继续编辑后手动保存
+
+#### Scenario: 判据一 — 提交接口响应时间 P95 远小于一次 Layer 3 执行耗时（三段式）
+- **前置条件**：course-chat 网关可达；已知 Layer 3 单次执行耗时约 2–5s（同环境实测）
+- **操作**：连续提交 20 份不同 PDF，用 `curl -w '%{time_total}'` 逐次记录 `POST /api/v1/documents` 的响应时间，排序后取 P95；取其中 3 份在同环境下手动同步执行 Layer 3 记录耗时
+- **可观测结果**：
+  1. 提交响应时间 P95 ≤ 500ms（显著小于一次 Layer 3 执行耗时下限 2s）
+  2. 响应体 `document` 含 `parseStatus=processing` 和 `extractionVersion`，但**不含** abstract/keywords/journal 等 Layer 3 产出字段（仅含 Layer 1+2 已得字段）
+
+#### Scenario: 判据二 — worker 进程终止后任务不丢失（三段式）
+- **前置条件**：Compose 栈正常启动；已有一份未提取的新 PDF 待提交；extraction_job 表可查询
+- **操作**：
+  1. `docker compose stop extraction-worker` 停消费者
+  2. 提交该 PDF，记录响应中的 `extractionVersion`
+  3. 查询 `SELECT status FROM extraction_jobs WHERE extraction_version=:v`，确认 `status='queued'`
+  4. `docker compose start extraction-worker`
+  5. 轮询 `GET /api/v1/documents/{id}` 直至 `parseStatus` 从 processing 变为 completed
+- **可观测结果**：
+  1. 步骤 2 提交返回 HTTP 201 成功，不报错
+  2. 步骤 3 查询到的任务 status 停留在 queued（不会被 api 进程内的 lifespan scan 置 failed）
+  3. 步骤 4 启动后 5s 内该任务自动进入 processing，30s 内完成，**无需重新提交**
+
+#### Scenario: 判据三 — 重复投递不产生重复结果（三段式）
+- **前置条件**：同一份 PDF 的 SHA-256 已知；Compose 栈正常启动；ExtractionJob 表的 `(document_id, file_hash)` 有 UNIQUE 约束或应用层幂等检测
+- **操作**（两条路径任选其一）：
+  - **路径 A（连续两次提交）**：同一用户连续两次 `POST /api/v1/documents`（同 PDF），确认第二次请求触发 extraction_job 创建逻辑
+  - **路径 B（模拟 worker 崩溃重投）**：在 worker 刚执行完 `UPDATE SET status=processing` 但还没执行 Layer 3 时，`docker compose kill extraction-worker` + `docker compose start extraction-worker`（模拟消费端重投）；查询 `SELECT attempts FROM extraction_jobs WHERE id=:j` 观察 attempts 是否递增
+- **可观测结果**：
+  1. `extraction_jobs` 表中该 `documentId+fileHash` 只有一条 **completed** 记录（路径 A）；或 attempts 递增但无重复 queued 行（路径 B）
+  2. `extraction_results` 表中该 extractionVersion 只有一行，最终合并值与无重投场景**完全一致**（attempts 增加但评分/题录不变）
+  3. 前端查询 GET `/api/v1/documents/{id}` 只展示一份题录，不重复
+
+#### Scenario: 回归 — 上传响应 parseStatus 必须是 processing（三段式，2026-11-04 实发缺陷）
+- **前置条件**：Compose 栈正常启动；一份未上传过的新 PDF
+- **操作**：`POST /api/v1/documents` 上传该 PDF，随后轮询 `GET /api/v1/documents/{id}`
+- **可观测结果**：
+  1. 上传响应体 `document.parseStatus == "processing"`（前端据此进入轮询；若为 `not_requested` 前端不轮询，Layer 3 完成后页面不自动刷新，表现为"识别不了摘要"——2026-11-04 实发缺陷）
+  2. 60s 内 `parseStatus` 流转为 `completed`（或 `failed`），无需手动刷新页面即可看到 Layer 3 回填字段
 
 ### Requirement: 自动回填与正式题录保护
 系统 SHALL 在提取完成后自动将最终合并结果写入 documents 表正式题录，使详情页无需人工操作即可展示提取结果。自动写入 MUST 仅更新仍为上传初始值（title 为原始文件名、其余字段为空或 null）或上一次自动写入值的字段；用户已手动修改的字段不得被覆盖。用户校正**必须**通过已有 PATCH `/api/v1/documents/{id}` 保存，复用 01 的 `DocumentPatch` 契约。

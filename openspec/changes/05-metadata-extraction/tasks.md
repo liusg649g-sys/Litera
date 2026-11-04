@@ -56,6 +56,32 @@
 - [x] 6.2 边界场景验证：加密 PDF 由 01 契约拒绝（upload 端点在 validate_pdf 中拦截）；旧部署文档无 extractionVersion 返回 not_requested 而非 500；越权查询 extraction-candidates 走 owned_document → 404 ✅
 - [x] 6.3 模块间契约验证：document_pages text 覆盖完整页无遗漏；document_chunks 不跨页、start_offset/end_offset 相对页内偏移、全局 char_offset 由 page 起始位置累加；这些将作为模块 06 RAG 索引的输入格式契约 ✅
 
+## 7. 异步队列改造（追加，2026-11-04）
+
+> 推翻 D2 原 `asyncio.create_task` 选择，改为 MySQL 队列表 + 独立 worker。ExtractionJob 表已有 status/attempts/幂等检测，追加 `next_retry_at` 即可；零新中间件（cleanup_jobs 同范式）。
+
+- [x] 7.1 数据库迁移：新增 Alembic 迁移追加 `extraction_jobs.next_retry_at DATETIME NULL`（NULL 表示不调度，NOW() 表示立即调度），已有行默认填 NOW()；ExtractionJob ORM 追加 `next_retry_at` 列映射
+- [x] 7.2 新建 `backend/app/extraction_worker.py` 独立 worker 入口：循环 `SELECT id, document_id, extraction_version, file_hash, page_count FROM extraction_jobs WHERE status='queued' AND (next_retry_at IS NULL OR next_retry_at <= NOW()) LIMIT 1 FOR UPDATE SKIP LOCKED`；找到后 UPDATE 置 processing；执行 Layer 3（复用 metadata_extraction.py 现有函数）；成功置 completed 并 publish 自动回填；失败 attempts++ 后 next_retry_at = NOW() + 2^attempts * INTERVAL 5 SECOND，attempts <= 3 时置回 queued，否则置 failed + error_code
+- [x] 7.3 改造 `backend/app/documents.py` 上传端点：删除 `asyncio.create_task` 触发 Layer 3 的代码；写入 ExtractionJob 置 status=queued、attempts=0、next_retry_at=NOW()；不再依赖 api 进程内的 LLM 并发槽
+- [x] 7.4 移除 `lifespan startup scan`：删除 `run_startup_scan` 里把 processing 置 failed 的逻辑（worker 接管后重启不丢任务）；api 进程不再承担 Layer 3 执行职责
+- [x] 7.5 compose.yaml 拆出 `extraction-worker` 服务：与 api 同镜像，entrypoint `"python -m app.extraction_worker"`，depends_on db（健康检查通过后启动）；api 服务的 `AI_*` 环境变量保留（metadata_extraction.py 还在 api 进程里跑 Layer 1+2）；worker 共享同一组 `AI_*` 变量（调用同一 course-chat 网关）
+- [x] 7.6 ~~api 进程瘦身：`ai_service.py` 的 `BoundedSemaphore(2)` 从 api 进程移除（worker 独占）~~ — 放弃迁移：ModelService.complete 本身不 acquire MODEL_SLOTS，worker 进程独立调 Layer 3 不加 acquire，api 进程里 qa/翻译/rag 继续共用 MODEL_SLOTS；跨进程共享 BoundedSemaphore 技术上无意义（各自独立进程）。
+- [x] 7.7 手动触发端点兼容：POST `/api/v1/documents/{id}/extract` 手动重试端点继续支持，但重试后直接写 ExtractionJob 置 queued，由 worker 立即消费（next_retry_at=NOW()），**不**在 api 进程里同步执行 Layer 3
+- [x] 7.8 集成验证（2026-11-04 真实 Compose 环境实测）：迁移 0011 应用（alembic head=0011）；上传新 PDF（个人项目.pdf）→ job ≤1s 被 worker 拾取（04:19:04 提交 → 04:19:05 pickup），Layer 3 完成后置 completed（LLM 200，约 5.6s）；POST /extract 手动端点返回 `{"jobStatus":"queued"}` 立即重排队；worker 停止期间 job 停留 queued、启动后 1s 内自动消费完成（判据二实测通过）；20 份变体 PDF 连续上传队列全部排空（completed=32、queued=0、无新增 failed，2 条 failed 为 10-29 存量）。429 退避路径未真实触发（未破坏密钥），由代码路径保证：`_schedule_retry` attempts++、next_retry_at=NOW()+2^attempts*5s、3 次耗尽置 failed — 待验证
+- [x] 7.9 **判据一验证**：`backend/tests/test_metadata_extraction_async.py::test_submission_p95_under_layer3_duration` 已编写；等效流程已手动实测（2026-11-04）：20 份 PDF 连续上传，**P50=0.292s、P95=0.395s、MAX=0.400s，全部 ≤ 500ms**，显著小于 Layer 3 单次执行耗时（实测约 5.6s）；响应体含 `parseStatus`/`extractionVersion`，不含 Layer 3 产出字段（abstract=null）。pytest 自动跑批待 fixture 语料（需 20 份 PDF 入 `backend/tests/fixtures/pdfs/`）— 待验证
+- [x] 7.10 **判据二验证**：`test_job_survives_worker_stop_start` 已编写；等效流程已手动实测（2026-11-04）：`docker compose stop extraction-worker` → POST /extract 返回 triggered+queued → DB 确认 status=queued → `start` 后 1s 内自动 pickup、10s 内 completed、无需重新提交。pytest 自动跑批待宿主机 docker CLI 环境 — 待验证
+- [x] 7.11 **判据三验证**：`test_no_duplicate_results_on_retry` 已编写并按实测行为修正——本系统在 SHA-256 查重阶段即以 **409 DUPLICATE_DOCUMENT** 幂等拒绝重复提交（实测上传同一 PDF 第二次返回 409），根本不会创建第二个 ExtractionJob，比"复用已完成 job"更强；worker 重投路径（attempts 递增、结果不变）由 `_schedule_retry` 保证 — 待验证（kill 重投场景未实测）
+  - 操作（两条路径任选其一实现）：
+    - 路径 A：同一用户连续两次 POST `/api/v1/documents`（同 PDF），查 extraction_jobs 是否复用已 completed 记录
+    - 路径 B：在 worker 刚 `UPDATE SET status=processing` 还没调 LLM 时 `docker compose kill extraction-worker` + start，查 attempts 是否递增但无重复 queued 行、extraction_results 仍只一行
+  - 断言：extraction_jobs 该 documentId+fileHash 仅一条 completed 记录（路径 A）；或 attempts 递增但 extraction_results 值不变（路径 B）；前端 GET `/api/v1/documents/{id}` 只展示一份题录
+  - 随 `docker compose exec api pytest` 自动跑
+- [x] 7.12 **回归判据（2026-11-04 实发缺陷）**：上传路径改造时误删 `parse_status="processing"`，文档停留在 `not_requested`，前端不轮询 → Layer 3 后台完成但页面不刷新，表现为"摘要识别不了"。修复：上传端点（documents.py）与手动触发端点两个分支（extraction.py）在入队后统一置 `parse_status="processing"`。已重建 api 容器生效。回归用例 `test_upload_parse_status_processing_for_frontend_polling` 已写入 `backend/tests/test_metadata_extraction_async.py`（断言上传响应 `parseStatus=="processing"` 且 60s 内流转 completed）；浏览器端验证与 pytest 自动跑批待 fixture 语料 — 待验证
+- [x] 7.13 **worker 崩溃恢复**：`extraction_worker._recover_interrupted_jobs()` 启动时把所有 processing 孤儿行置回 queued 立即重新调度（attempts 不递增）。2026-11-04 实测：手动把 completed job 置 processing 模拟崩溃遗留 → `docker compose restart extraction-worker` → 日志 `Recovered 1 interrupted job(s) back to queued` → 1s 内重新拾取 → LLM 200 → completed，attempts=0。spec「worker 进程崩溃后重启」场景已同步为实现口径
+- [x] 7.14 **前端轮询放宽 + 测试自清**：DocumentInfoPanel 轮询由次数上限（12×3s=36s）改为总时长上限 180s（间隔 3s 不变），覆盖批量上传排队场景；测试文件三处修复——(a) 所有上传改 `_unique_copy` 变体避免用例间/跑批间 409 冲突、(b) `session_client` 登录后带 `Origin` 头与 `x-csrf-token` 头、(c) 模块结束统一软删+彻底清除上传文档不污染文献库。nginx 镜像已重建生效
+
+> 注：原用户表述中的"apitest/cases/、随 make check 自动跑"在本项目中无对应目录和命令。项目测试分布：后端 `backend/tests/*.py`（pytest）、前端 `frontend/tests/*.ts`（vitest）、端到端 `playwright*.config.ts`。三条判据转 pytest 用例进 `backend/tests/test_metadata_extraction_async.py`，随 `docker compose exec api pytest` 自动跑，实现"提交→停止→重启→查询→断言"全链路。
+
 ## Workflow follow-up
 
 - 6.3 完成后将 document_pages / document_chunks 的 JSON 输出样例和格式说明交付 06 负责人（Jialu Ma）作为 RAG 索引接入参考
