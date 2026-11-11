@@ -109,17 +109,32 @@ function Remove-Doc {
 }
 
 function Ask-Qa {
-    # QA returns 503 QA_INDEX_BUILDING until the background embedding sweep finishes.
-    # Retry the same question until 200 or timeout; return the final response.
-    param($Client, [string]$Id, [string]$Question, [int]$TimeoutSec = 150)
+    # 503 = QA_INDEX_BUILDING until the embedding sweep finishes.
+    # 429 = upstream MODEL_QUOTA; retry instead of reporting a product failure.
+    param($Client, [string]$Id, [string]$Question, [int]$TimeoutSec = 240)
     $t0 = Get-Date
     $last = $null
     while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
         $last = Api-Req $Client 'POST' "/documents/$Id/qa" @{ mode = 'question'; question = $Question; contextRevision = 0 }
         if ($last.Status -eq 200) { return $last }
+        if ($last.Status -ne 429 -and $last.Status -ne 503) { return $last }
         Start-Sleep -Seconds 10
     }
     return $last
+}
+
+function Retry-On-Quota {
+    # Wrap a call that may hit upstream 429; keeps retrying until 200 or timeout.
+    param([scriptblock]$Call, [int]$TimeoutSec = 120, [int]$IntervalSec = 10)
+    $t0 = Get-Date
+    $r = $null
+    while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSec) {
+        $r = & $Call
+        if ($r.Status -eq 200) { return $r }
+        if ($r.Status -ne 429) { return $r }
+        Start-Sleep -Seconds $IntervalSec
+    }
+    return $r
 }
 
 function Wait-DocStatus {

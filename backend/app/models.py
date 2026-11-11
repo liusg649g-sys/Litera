@@ -329,3 +329,27 @@ class QaChunkVector(Base):
     vector: Mapped[bytes] = mapped_column(LargeBinary().with_variant(MEDIUMBLOB(), "mysql"), nullable=False)
     dimension: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class AuditLog(Base):
+    """SEC-07 unified seven-column audit trail.
+
+    One row = one operation event.  ``payload`` carries the full JSON
+    representation so any consumer can slurp one column and get everything.
+    The split columns are just index-friendly projections.
+    """
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_user_created", "user_id", "created_at"),
+                      Index("ix_audit_logs_action_status", "action", "status"),
+                      Index("ix_audit_logs_target", "target"),
+                      {"mysql_engine": "InnoDB"})
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    target: Mapped[str] = mapped_column(String(36), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    skill: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)

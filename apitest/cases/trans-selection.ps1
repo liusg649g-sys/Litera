@@ -7,8 +7,8 @@ $up = Upload-Pdf $c $pdf
 $id = ($up.Text | ConvertFrom-Json).id
 $body = @{ text = 'The zebra-telegraph method is a deterministic test technique.'
     sourceLanguage = 'en'; targetLanguage = 'zh'; pageNumber = 1; contextRevision = 0 }
-$r = Api-Req $c 'POST' "/documents/$id/translations" $body
-Check 'translate 200' $r.Status 200
+$r = Retry-On-Quota { Api-Req $c 'POST' "/documents/$id/translations" $body } 120 10
+Check 'translate 200 (retries upstream 429)' $r.Status 200
 $j = $r.Text | ConvertFrom-Json
 Check-True 'translatedText non-empty' ($j.translatedText -and $j.translatedText.Length -gt 3) ''
 Check-True 'result contains CJK characters' ($j.translatedText -match '\p{IsCJKUnifiedIdeographs}') ''

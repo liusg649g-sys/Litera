@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from .schemas import InputModel
+from .audit import log_audit
 from .database import get_db
 from .config import get_model_settings as get_settings
 from .documents import owned_document, storage_path
@@ -60,6 +61,7 @@ def create_translation_router(require_csrf):
     @router.post('/{document_id}/translations')
     @observed_translation
     async def translate(document_id: str, payload: TranslationInput, request: Request, response: Response, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db), resolver=Depends(model_resolver)):
+        api_start = time.perf_counter()
         doc, attachment = owned_document(db, session.user_id, document_id)
         from .config import get_settings as business_settings
         if payload.modelSource == 'developer' and business_settings().unified_acceptance:
@@ -113,6 +115,22 @@ def create_translation_router(require_csrf):
             else:
                 translated = await run_connected(request, translate_text(model_input.text, payload.sourceLanguage, payload.targetLanguage, None, user_id=owner, resolver=resolver))
         except ModelFailure as failure:
+            # SEC-07: audit translation failure.
+            api_ms = int((time.perf_counter() - api_start) * 1000)
+            fail_metrics = current_timing.get()
+            log_audit(
+                action="translate",
+                target=document_id,
+                status="failed",
+                user_id=owner,
+                skill="translate",
+                duration_ms=api_ms,
+                tokens_in=(fail_metrics.tokens_in or None) if fail_metrics else None,
+                tokens_out=(fail_metrics.tokens_out or None) if fail_metrics else None,
+                error_code=failure.code,
+                model=getattr(resolver, "model", None) if resolver else None,
+                extra={"modelSource": payload.modelSource, "source": payload.sourceLanguage, "target": payload.targetLanguage},
+            )
             error(failure.status, failure.code, failure.message)
         finally:
             slots.release()
@@ -128,5 +146,27 @@ def create_translation_router(require_csrf):
         if model_input.joins:
             result.update(modelInputText=model_input.text, normalizationCount=model_input.joins)
         result['translationProof'] = issue_translation_proof(owner, file_sha256, result, origin='isolated_mock' if payload.modelSource == 'mock' else None)
+        # SEC-07: audit translation success.
+        api_ms = int((time.perf_counter() - api_start) * 1000)
+        metrics = current_timing.get()
+        log_audit(
+            action="translate",
+            target=document_id,
+            status="success",
+            user_id=owner,
+            skill="translate",
+            duration_ms=api_ms,
+            tokens_in=(metrics.tokens_in or None) if metrics else None,
+            tokens_out=(metrics.tokens_out or None) if metrics else None,
+            model=getattr(resolver, "model", None) if resolver and payload.modelSource != "mock" else None,
+            extra={
+                "modelSource": payload.modelSource,
+                "source": payload.sourceLanguage,
+                "target": payload.targetLanguage,
+                "pageNumber": payload.pageNumber,
+                "pdf_ms": int(getattr(metrics, "pdf_ms", 0) or 0) if metrics else None,
+                "llm_ms": int(getattr(metrics, "llm_ms", 0) or 0) if metrics else None,
+            },
+        )
         return result
     return router

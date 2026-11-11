@@ -16,7 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,11 +24,13 @@ from sqlalchemy.orm import Session
 from . import rag
 from .ai_service import DeveloperProfileResolver, MODEL_SLOTS, ModelFailure, ModelService
 from .answer_sources import AnswerCitation, AnswerResolutionError, ResolvedAnswer
+from .audit import log_audit
 from .config import get_model_settings
 from .database import get_db
 from .documents import iso, owned_document, reject
 from .models import DocumentChunk, LoginSession, QaAnswer
 from .schemas import InputModel
+from .translation_runtime import TranslationTiming, current_timing
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +269,21 @@ def _save(db: Session, *, owner: str, document_id: str, file_sha256: str, versio
                    latency_ms=latency_ms, revision=1, created_at=_now())
     db.add(row)
     db.commit()
+    # SEC-07: QA completion audit row.
+    skill_map = {"question": "qa-rag", "summary": "qa-summary", "analysis": "qa-analysis"}
+    timing = current_timing.get()
+    log_audit(
+        action="qa",
+        target=document_id,
+        status="success" if status == "answered" else "partial",
+        user_id=owner,
+        skill=skill_map.get(mode, "qa-rag"),
+        duration_ms=latency_ms,
+        tokens_in=(timing.tokens_in or None) if timing else None,
+        tokens_out=(timing.tokens_out or None) if timing else None,
+        model=model or None,
+        extra={"qa_row_id": row.id, "mode": mode, "intent": intent, "citation_count": len(citations or [])},
+    )
     return row
 
 
@@ -444,24 +461,65 @@ def create_qa_router(current_session, require_csrf) -> APIRouter:
     async def ask(document_id: str, payload: QaInput,
                   session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
         started = time.perf_counter()
-        doc, doc_file = owned_document(db, session.user_id, document_id)
-        owner, sha = session.user_id, doc_file.sha256
-        question = (payload.question or "").strip()
-        if payload.mode == "question" and not question:
-            reject(422, "QA_QUESTION_REQUIRED", "请输入要询问的问题")
-        if doc.parse_status != "completed" or not doc.extraction_version:
-            reject(503, "EXTRACTION_NOT_READY", "文献正文尚未提取完成，请稍后再试")
-        version = doc.extraction_version
-        if payload.mode in ("summary", "analysis"):
-            cached = _cached(db, owner, doc.id, version, payload.mode)
-            if cached is not None:
-                return _answer_dto(cached, True)
-        version = _require_index(db, doc)
-        if payload.mode == "question":
-            return await _ask_question(db, owner=owner, document_id=doc.id, sha=sha, version=version,
-                                       payload=payload, question=question, started=started)
-        return await _ask_structure(db, owner=owner, document_id=doc.id, sha=sha, version=version,
-                                    payload=payload, started=started)
+        # SEC-07: give the AI service a timing context so token usage is captured.
+        timing = TranslationTiming()
+        timing_token = current_timing.set(timing)
+        try:
+            doc, doc_file = owned_document(db, session.user_id, document_id)
+            owner, sha = session.user_id, doc_file.sha256
+            question = (payload.question or "").strip()
+            if payload.mode == "question" and not question:
+                reject(422, "QA_QUESTION_REQUIRED", "请输入要询问的问题")
+            if doc.parse_status != "completed" or not doc.extraction_version:
+                reject(503, "EXTRACTION_NOT_READY", "文献正文尚未提取完成，请稍后再试")
+            version = doc.extraction_version
+            if payload.mode in ("summary", "analysis"):
+                cached = _cached(db, owner, doc.id, version, payload.mode)
+                if cached is not None:
+                    return _answer_dto(cached, True)
+            version = _require_index(db, doc)
+            if payload.mode == "question":
+                return await _ask_question(db, owner=owner, document_id=doc.id, sha=sha, version=version,
+                                           payload=payload, question=question, started=started)
+            return await _ask_structure(db, owner=owner, document_id=doc.id, sha=sha, version=version,
+                                        payload=payload, started=started)
+        except HTTPException as exc:
+            # SEC-07: every failed QA attempt gets an audit row (5xx + model errors).
+            # 401/403/404 are already logged as "denied" by the request middleware;
+            # 422 validation rejects are client input errors, not execution failures.
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            code = detail.get("code") or ""
+            if exc.status_code >= 500 or exc.status_code == 429:
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                log_audit(
+                    action="qa",
+                    target=document_id,
+                    status="failed",
+                    user_id=session.user_id,
+                    skill="qa-rag",
+                    duration_ms=latency_ms,
+                    tokens_in=(timing.tokens_in or None),
+                    tokens_out=(timing.tokens_out or None),
+                    error_code=code or None,
+                    extra={"mode": payload.mode, "http_status": exc.status_code},
+                )
+            raise
+        except Exception as exc:
+            # SEC-07: unexpected exceptions also leave a failed audit row.
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            log_audit(
+                action="qa",
+                target=document_id,
+                status="failed",
+                user_id=session.user_id,
+                skill="qa-rag",
+                duration_ms=latency_ms,
+                error_code="INTERNAL",
+                extra={"mode": payload.mode, "exc_type": type(exc).__name__},
+            )
+            raise
+        finally:
+            current_timing.reset(timing_token)
 
     @router.get("/{document_id}/qa/{answer_id}")
     def read_answer(document_id: str, answer_id: str,

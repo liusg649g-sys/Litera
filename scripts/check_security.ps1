@@ -23,7 +23,7 @@ $audit | ForEach-Object { Write-Host $_ }
 $vulnLines = $audit | Where-Object { $_ -match 'CVE-|PYSEC-' }
 if ($vulnLines) {
     $count = ($vulnLines | Measure-Object).Count
-    Write-Host "SEC-06 WARNING: $count advisories; disposition registered in reports/security-baseline.md (pypdf>=6.21.4 upgrade pending)"
+    Write-Host "SEC-06 WARNING: $count advisories (pip build-time tool only, disposition registered in reports/security-baseline.md)"
 } else {
     Write-Host 'SEC-06 PASS: 0 advisories'
 }

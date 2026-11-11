@@ -112,6 +112,10 @@ class OpenAICompatible:
                         if len(body) > 128 * 1024:
                             raise ModelFailure('MODEL_INVALID_RESPONSE', '模型返回内容过长或格式无效')
             data = json.loads(body)
+            if metrics is not None and isinstance(data.get('usage'), dict):
+                # SEC-07 audit: capture token usage when the gateway reports it.
+                metrics.tokens_in += int(data['usage'].get('prompt_tokens') or 0)
+                metrics.tokens_out += int(data['usage'].get('completion_tokens') or 0)
             choice = data['choices'][0]
             if not isinstance(choice, dict) or not isinstance(choice.get('message'), dict):
                 raise ValueError('invalid choice')

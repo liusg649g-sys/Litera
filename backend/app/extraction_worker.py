@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
+from .audit import log_audit
 from .database import SessionLocal
 from .extraction import mark_job_completed_with_llm, mark_job_failed
 from .metadata_extraction import extract_llm
@@ -205,11 +206,58 @@ def run_forever() -> None:
             if job is None:
                 time.sleep(idle_sleep)
                 continue
+            # SEC-07: record start-of-extraction event.
+            start_ns = time.perf_counter_ns()
             logger.info("Picked up job %s (attempts=%d)", job.id, job.attempts)
+            log_audit(
+                action="extract",
+                target=job.document_id,
+                status="processing",
+                user_id=job.owner_id,
+                skill="extract-llm",
+                extra={"job_id": job.id, "attempts": job.attempts, "version_id": job.version_id},
+            )
             _safe_run(job)
+            # SEC-07: record completion after _safe_run persisted the final status.
+            duration_ms = int((time.perf_counter_ns() - start_ns) / 1_000_000)
+            _log_extraction_outcome(job.id, duration_ms)
             time.sleep(busy_sleep)
     except KeyboardInterrupt:
         logger.info("extraction-worker stopped by SIGINT")
+
+
+def _log_extraction_outcome(job_id: str, duration_ms: int) -> None:
+    """Read final job state and write a single completion audit row.
+
+    We re-query because _safe_run may have committed status changes
+    (completed / failed / DOCUMENT_MISSING).
+    """
+    db = SessionLocal()
+    try:
+        job = db.get(ExtractionJob, job_id)
+        if job is None:
+            return
+        status_map = {
+            "completed": "success",
+            "failed": "failed",
+            "queued": "partial",   # re-queued = backoff retry, not terminal
+            "processing": "partial",
+        }
+        outcome = status_map.get(job.status, job.status)
+        log_audit(
+            action="extract",
+            target=job.document_id,
+            status=outcome,
+            user_id=job.owner_id,
+            skill="extract-llm",
+            duration_ms=duration_ms,
+            error_code=job.error_code,
+            extra={"job_id": job.id, "attempts": job.attempts, "version_id": job.version_id},
+        )
+    except Exception as exc:
+        logger.warning("audit outcome lookup failed for job %s: %s", job_id, exc)
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

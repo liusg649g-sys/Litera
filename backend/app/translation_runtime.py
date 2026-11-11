@@ -16,6 +16,8 @@ class TranslationTiming:
     gateway_ms: float = 0
     gateway_status: int | None = None
     gateway_calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
 
     def headers(self):
         total = (time.perf_counter() - self.started) * 1000
@@ -44,6 +46,27 @@ async def run_connected(request, operation):
             if not task.done(): task.cancel()
         await asyncio.gather(work, watcher, return_exceptions=True)
 
+def _audit_unexpected(kwargs, metrics, code):
+    """SEC-07: failed audit row for cancelled / unexpected translation errors."""
+    try:
+        from .audit import log_audit
+        session = kwargs.get('session')
+        log_audit(
+            action="translate",
+            target=kwargs.get('document_id') or "-",
+            status="failed",
+            user_id=getattr(session, 'user_id', None),
+            skill="translate",
+            duration_ms=int((time.perf_counter() - metrics.started) * 1000),
+            tokens_in=(metrics.tokens_in or None),
+            tokens_out=(metrics.tokens_out or None),
+            error_code=code,
+            extra={"path": "observed_translation"},
+        )
+    except Exception:
+        logging.getLogger('uvicorn.error').warning('audit for failed translation skipped')
+
+
 def observed_translation(function):
     @wraps(function)
     async def wrapped(*args, **kwargs):
@@ -61,9 +84,11 @@ def observed_translation(function):
             raise
         except asyncio.CancelledError:
             status, code = 499, 'TRANSLATION_CANCELLED'
+            _audit_unexpected(kwargs, metrics, 'TRANSLATION_CANCELLED')
             raise
         except Exception:
             status, code = 500, 'INTERNAL_ERROR'
+            _audit_unexpected(kwargs, metrics, 'INTERNAL_ERROR')
             raise
         finally:
             logging.getLogger('uvicorn.error').info(

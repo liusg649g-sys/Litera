@@ -20,6 +20,7 @@ from .database import get_db
 from .models import LoginSession, User
 from .schemas import LoginInput, PasswordChangeInput, ProfileInput, RegisterInput, user_dto
 from .security import csrf_token, dummy_hash, password_hasher, token_hash, verify_password
+from .audit import log_denied_request
 from .documents import UploadLimitMiddleware, create_document_router
 from .annotations import create_annotation_router
 
@@ -86,6 +87,20 @@ async def request_context(request: Request, call_next):
     response.headers["X-Request-ID"] = request.state.request_id
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+        # SEC-07: rejected requests get an audit row too (all 4xx denials:
+        # 401 unauthenticated, 403 CSRF/origin, 404 cross-user or missing,
+        # 422 validation reject, 429 rate limit).
+        if 400 <= response.status_code < 500:
+            try:
+                await run_in_threadpool(
+                    log_denied_request,
+                    method=request.method,
+                    path=request.url.path,
+                    http_status=response.status_code,
+                    session_token=request.cookies.get(COOKIE_NAME),
+                )
+            except Exception:
+                logging.warning("denied-request audit failed: %s", request.state.request_id)
     return response
 
 @app.exception_handler(StarletteHTTPException)
