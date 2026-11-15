@@ -86,3 +86,13 @@ it('blocks unknown source schema versions rather than merely showing a warning',
  expect(wrapper.get('[aria-label="保存摘录"]').attributes('disabled')).toBeDefined()
  await submit();expect(noteCaptureApi.save).not.toHaveBeenCalled()
 })
+
+
+it('duplicate new title keeps source and title editable and retries with corrected title',async()=>{
+ vi.mocked(noteCaptureApi.save).mockRejectedValueOnce(new ApiError(409,'NOTE_TITLE_DUPLICATE','同名笔记'));
+ await open();await wrapper.get('[aria-label="新笔记标题"]').setValue('Existing');await submit();
+ expect(wrapper.text()).toContain('同名笔记');expect(wrapper.get('[aria-label="新笔记标题"]').element).toHaveProperty('value','Existing');
+ expect(wrapper.get('[aria-label="新笔记标题"]').attributes('disabled')).toBeUndefined();
+ await wrapper.get('[aria-label="新笔记标题"]').setValue('Corrected');await submit();
+ expect(noteCaptureApi.save).toHaveBeenCalledTimes(2);expect(vi.mocked(noteCaptureApi.save).mock.calls[1]![0].newNoteTitle).toBe('Corrected');expect(wrapper.emitted('captured')).toHaveLength(1);
+})

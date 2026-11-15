@@ -440,7 +440,7 @@ def test_capture_closes_read_snapshot_then_locks_document_before_note(logged, do
 
     def document_lock(db, *args, **kwargs):
         assert kwargs.get('lock') is True
-        assert events[-1] == 'rollback' and not db.in_transaction()
+        assert events[-1] == 'owner-lock' and db.in_transaction()
         item = real_document(db, *args, **kwargs)
         events.append('document-lock')
         return item
@@ -451,6 +451,11 @@ def test_capture_closes_read_snapshot_then_locks_document_before_note(logged, do
         events.append('note-lock')
         return item
 
+    real_owner_lock = note_captures.lock_note_writes
+    def owner_lock(db, owner):
+        real_owner_lock(db, owner)
+        events.append('owner-lock')
+    monkeypatch.setattr(note_captures, 'lock_note_writes', owner_lock)
     monkeypatch.setattr(note_captures, 'existing_capture', replay)
     monkeypatch.setattr(note_captures, 'owned_document', document_lock)
     monkeypatch.setattr(note_captures, 'owned_note', note_lock)
@@ -458,7 +463,7 @@ def test_capture_closes_read_snapshot_then_locks_document_before_note(logged, do
     body['associationMode'] = 'link'
     response = send(logged, body)
     assert response.status_code == 201, response.text
-    assert events == ['probe', 'rollback', 'document-lock', 'note-lock', 'probe']
+    assert events == ['probe', 'rollback', 'owner-lock', 'document-lock', 'note-lock', 'probe']
     assert response.json()['note']['documents'] == [{'id': document['id'], 'title': document['title']}]
     assert response.json()['note']['content'] == note['content']
 
@@ -475,3 +480,10 @@ def test_concurrent_identical_new_note_capture_returns_one_created_and_replay(lo
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Note)) == 1
         assert db.scalar(select(func.count()).select_from(NoteDocument)) == 1
+
+
+def test_pdf_and_translation_titles_share_duplicate_rule(logged,document,monkeypatch):
+    create(logged,document['id'],title='Captured research')
+    assert_error(send(logged,payload(document)), 'NOTE_TITLE_DUPLICATE',409)
+    body=translated_payload(logged,document,monkeypatch)
+    assert_error(send(logged,body),'NOTE_TITLE_DUPLICATE',409)

@@ -66,7 +66,7 @@ async function submit(){
     // A lost response may follow a committed transaction. Reuse the exact same
     // operation and payload; do not create another note or append twice.
     uncertain.value=!(value instanceof ApiError) || value.status===0 || value.status>=500
-    conflict.value=value instanceof ApiError && value.status===409
+    conflict.value=value instanceof ApiError && value.status===409 && value.code!=='NOTE_TITLE_DUPLICATE'
     if(uncertain.value)info.value='保存结果尚未确认。重试将核实同一操作，不会重复插入；目标与来源暂时锁定。'
     else if(conflict.value)info.value='目标笔记或关联已变化。请重新读取目标笔记，检查后再次点击保存；本次没有覆盖内容。'
     else pending.value=null

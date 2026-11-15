@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from .answer_sources import AiAnswerSource, get_answer_resolver, read_answer
 from .config import get_settings
 from .database import get_db
+from .note_titles import lock_note_writes, require_unique_title
 from .documents import iso, owned_document, reject, storage_path
 from .models import LoginSession, Note, NoteDocument
 from .notes import TITLE_LIMIT, dto, now, owned_note, ready, schema_available
@@ -338,7 +339,7 @@ def add_capture_routes(router, current_session, require_csrf):
         # Authentication and the initial replay lookup are read-only. End their
         # consistent-read snapshot before current locking reads: under MySQL
         # REPEATABLE READ, a refreshed Note alone does not refresh later link DTOs.
-        db.rollback()
+        lock_note_writes(db, owner)
         answer = None
         if isinstance(payload.source, AiAnswerSource):
             answer, doc, attachment = checked_answer(resolver, db, owner, payload.source)
@@ -367,6 +368,8 @@ def add_capture_routes(router, current_session, require_csrf):
                     return replay
                 reject(409, 'NOTE_CREATE_CONFLICT', '此笔记已存在，请重新读取后保存。')
             sources = []
+        if payload.newNoteTitle is not None or payload.associationMode == 'link':
+            require_unique_title(db, owner, payload.newNoteTitle or item.title, [doc.id], payload.noteId)
         if len(sources) >= BLOCK_LIMIT:
             reject(422, 'NOTE_CAPTURE_LIMIT', '此笔记的摘录数量已达上限，请选择其他笔记。')
         block = make_answer_block(payload, digest, answer, doc) if answer else make_block(payload, digest, doc, attachment, owner)

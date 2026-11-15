@@ -103,3 +103,8 @@
  .reader-body.qa-open .reader-extension-panels{position:relative;right:auto;top:auto;bottom:auto;flex:0 0 400px;width:400px;box-shadow:none;z-index:auto}
  .reader-body.qa-open .reader-extension-panels .reader-panel{width:100%!important}
 }
+
+/* Shared search/annotation sidebar reserves space beside extension panels. */
+@media(min-width:1100px) and (max-width:1699px){
+ .reader-body.tools-open .reader-extension-panels{position:relative;right:auto;top:auto;bottom:auto;flex:0 0 320px;width:320px;z-index:auto;box-shadow:none}
+}

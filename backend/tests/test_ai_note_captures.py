@@ -182,3 +182,9 @@ def test_historical_confirm_and_fingerprint(logged,fixture):
     assert send(logged,request).status_code==201
     request['associationMode']='keep'
     assert_error(send(logged,request),'NOTE_CAPTURE_CONFLICT',409)
+
+
+def test_ai_capture_duplicate_title(logged,fixture):
+    doc,resolver,records=fixture
+    create(logged,doc['id'],title='AI fixture note')
+    assert_error(send(logged,body(records[0])),'NOTE_TITLE_DUPLICATE',409)

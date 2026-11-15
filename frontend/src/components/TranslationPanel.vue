@@ -37,7 +37,7 @@ function changeModel(event:Event){
 }
 const isolatedMockPreview=import.meta.env.VITE_LITERA_PREVIEW_MOCK==='true'
 const emit=defineEmits<{ 'update:open': [boolean]; 'save-to-note': [NoteCaptureDraft] }>()
-watch(()=>state.open,open=>emit('update:open',open))
+watch(()=>state.open,open=>emit('update:open',open),{flush:'sync'})
 const textIssue=computed(()=>state.source?.textExtractionIssue || (textHasUnmappedCharacters(state.source?.text || '') ? unreliableTextMessage : ''))
 const resultCurrent=computed(()=>!!state.result && translationMatchesSelection(state.result,state.resultPositions,readerContext.value,state.direction) && ((state.result.modelConfiguration?.source||'developer')===state.modelSource && (state.modelSource!=='user' || state.result.modelConfiguration?.revision===state.modelRevision)))
 function saveToNote() {

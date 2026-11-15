@@ -34,7 +34,7 @@ export const notesApi: NotesApi = {
   unlink: (id,documentId) => api(`${notePath(id)}/documents/${encodeURIComponent(documentId)}`,{method:'DELETE'},auth.csrfToken),
   remove: (id,version) => api(`${notePath(id)}?version=${version}`,{method:'DELETE'},auth.csrfToken),
 }
-interface Editor { note: NoteDTO; title: string; content: string; dirty: boolean; saving: boolean; error: string; conflict: boolean }
+interface Editor { note: NoteDTO; title: string; content: string; dirty: boolean; saving: boolean; error: string; conflict: boolean; titleConflict?: boolean }
 interface Draft { schema: 1; userId: string; noteId: string; version: number; title: string; content: string }
 const emptyPage = (): NotesPage => ({items:[],page:1,pageSize:20,total:0})
 const emptySearch = (): NoteSearchPage => ({items:[],query:'',page:1,pageSize:20,total:0})
@@ -74,7 +74,23 @@ export function createNotesController(transport: NotesApi = notesApi, storage?: 
   function invalidateReads(){listRead++;personalRead++;selection++;state.loading=false}
   function removeCached(page:NotesPage,id:string){if(page.items.some(note=>note.id===id)){page.items=page.items.filter(note=>note.id!==id);page.total=Math.max(0,page.total-1)}}
   function schedule(){clearTimeout(timer);if(state.editor?.dirty && !state.editor.error && !state.editor.conflict)timer=setTimeout(()=>{void flush()},delay)}
-  function edit(field:'title'|'content',value:string){const editor=state.editor;if(!editor || state.busy)return;editor[field]=value;editor.dirty=editor.title!==editor.note.title || editor.content!==editor.note.content;stash(editor);if(!editor.dirty){clearDraft(editor.note.id);editor.error='';editor.conflict=false}schedule()}
+  function edit(field:'title'|'content',value:string) {
+    const editor=state.editor
+    if(!editor || state.busy)return
+    editor[field]=value
+    if(field==='title' && editor.titleConflict) {
+      editor.error=''
+      editor.titleConflict=false
+    }
+    editor.dirty=editor.title!==editor.note.title || editor.content!==editor.note.content
+    stash(editor)
+    if(!editor.dirty) {
+      clearDraft(editor.note.id)
+      editor.error=''
+      editor.conflict=false
+    }
+    schedule()
+  }
   async function saveOne(editor:Editor,scope:number){
     const snapshot={version:editor.note.version,title:editor.title.trim() || '未命名笔记',content:editor.content}
     editor.saving=true
@@ -85,7 +101,7 @@ export function createNotesController(transport: NotesApi = notesApi, storage?: 
       const unchanged=(editor.title.trim() || '未命名笔记')===snapshot.title && editor.content===snapshot.content
       editor.note=result;updateSummary(result)
       if(unchanged){editor.title=result.title;editor.content=result.content;editor.dirty=false;editor.error='';clearDraft(result.id)}else{editor.dirty=true;stash(editor)}
-    }catch(error){if(scope===epoch && state.editor===editor){editor.error=message(error);editor.conflict=error instanceof ApiError && error.status===409;stash(editor)}}
+    }catch(error){if(scope===epoch && state.editor===editor){editor.error=message(error);editor.titleConflict=error instanceof ApiError && error.code==='NOTE_TITLE_DUPLICATE';editor.conflict=error instanceof ApiError && error.status===409 && error.code!=='NOTE_TITLE_DUPLICATE';stash(editor)}}
     finally{if(scope===epoch)editor.saving=false;if(activeSave===job)activeSave=null}})()
     activeSave=job;await job
   }
@@ -154,7 +170,7 @@ export function createNotesController(transport: NotesApi = notesApi, storage?: 
   }
   async function setOpen(value:boolean){state.open=value;if(value && state.available && !state.list.items.length)await refreshList(1)}
   async function create(){if(!state.available || !state.documentId || state.busy)return false;if(!await flush() && (!pendingCreate || state.editor?.dirty))return false
-    const scope=epoch,documentId=state.documentId;pendingCreate??={id:crypto.randomUUID(),title:'未命名笔记',content:'',documentId};state.busy=true;state.error='';state.success=''
+    const scope=epoch,documentId=state.documentId;pendingCreate??={id:crypto.randomUUID(),title:'未命名笔记 '+crypto.randomUUID().slice(0,8),content:'',documentId};state.busy=true;state.error='';state.success=''
     const work=(async()=>{try{const value=await transport.create(pendingCreate!);if(scope!==epoch)return false;pendingCreate=null;await refreshList(1);if(state.documentId===documentId)install(value,false);return true}catch(error){if(scope===epoch)state.error=message(error);return false}finally{if(scope===epoch)state.busy=false}})();mutation=work;const result=await work;if(mutation===work)mutation=null;return result}
   async function link(id:string){if(state.busy || !state.available || !await flush())return false;const scope=epoch,documentId=state.documentId;state.busy=true;state.error='';state.success=''
     const work=(async()=>{try{const value=await transport.link(id,documentId);if(scope!==epoch)return false;await refreshList(1);state.chooser=false;install(value);return true}catch(error){if(scope===epoch)state.error=message(error);return false}finally{if(scope===epoch)state.busy=false}})();mutation=work;const result=await work;if(mutation===work)mutation=null;return result}

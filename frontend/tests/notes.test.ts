@@ -178,3 +178,13 @@ it('retains the complete selected note while its panel is closed across associat
  expect(model.state.editor?.note.id).toBe('note-one');expect(model.state.editor?.note.documents).toHaveLength(2)
  await model.setOpen(true);expect(model.state.editor?.note.documents.map(document=>document.id)).toEqual(['doc-a','doc-b']);model.dispose()
 })
+
+
+it('duplicate titles retain input and allow correction without version reload',async()=>{
+ const {model,transport}=setup();await ready(model);
+ vi.mocked(transport.patch).mockRejectedValueOnce(new ApiError(409,'NOTE_TITLE_DUPLICATE','同名笔记'));
+ model.edit('title','Duplicate');model.edit('content','Keep this draft');await vi.advanceTimersByTimeAsync(800);
+ expect(model.state.editor?.title).toBe('Duplicate');expect(model.state.editor?.content).toBe('Keep this draft');expect(model.state.editor?.conflict).toBe(false);
+ model.edit('title','Unique');await vi.advanceTimersByTimeAsync(800);
+ expect(model.state.editor?.dirty).toBe(false);expect(model.state.editor?.content).toBe('Keep this draft');model.dispose();
+})

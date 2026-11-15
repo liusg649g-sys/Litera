@@ -528,7 +528,35 @@ async function resolveProgress(local: boolean) {
 }
 function pending(name: string) { notice.value = `${name}功能开发中，本阶段不会创建或保存批注数据。` }
 watch(group, value => { selectedAnnotation.value = ''; annotationTool.value = ''; if (value === '阅读') {cancelPlacement();notice.value = ''} })
-function openRight(name: string) { if (editor.value && name!=='批注列表') { editingBlocked(); return }; rightPanel.value = name; rightOpen.value = true }
+const panelsHidden = ref(false)
+const hasOpenPanels = computed(() => rightOpen.value || translationOpen.value || notesOpen.value)
+function togglePanels() {
+  if (!hasOpenPanels.value) {
+    openRight('搜索')
+    return
+  }
+  panelsHidden.value = !panelsHidden.value
+}
+function toggleRight(name: string) {
+  if (!panelsHidden.value && rightOpen.value && rightPanel.value === name) {
+    // Hiding the sidebar keeps its editor mounted and retains the draft.
+    rightOpen.value = false
+    return
+  }
+  openRight(name)
+}
+function toggleTranslation() {
+  if (panelsHidden.value && translationOpen.value) { panelsHidden.value = false; return }
+  panelsHidden.value = false
+  if (translationOpen.value) translationPanel.value?.toggle()
+  else translationPanel.value?.translate()
+}
+function toggleNotes() {
+  if (panelsHidden.value && notesOpen.value) { panelsHidden.value = false; return }
+  panelsHidden.value = false
+  notesPanel.value?.toggle()
+}
+function openRight(name: string) { if (editor.value && name!=='批注列表') { editingBlocked(); return }; panelsHidden.value = false; rightPanel.value = name; rightOpen.value = true }
 async function load(full = false) {
   const token = ++generation, id = String(route.params.documentId)
   clearSourceHighlight()
@@ -551,6 +579,7 @@ async function load(full = false) {
   if (leaving || token !== generation) return
   const tab = openReaderTab(id)
   const panels = tab.panels
+  panelsHidden.value = false
   leftOpen.value = panels?.leftOpen ?? false; rightOpen.value = panels?.rightOpen ?? false
   leftPanel.value = panels?.leftPanel ?? '缩略图'; rightPanel.value = panels?.rightPanel ?? '搜索'; leftWidth.value = panels?.leftWidth ?? 240
   let owned: ReturnType<typeof createPdfTask> | undefined
@@ -781,12 +810,13 @@ onBeforeUnmount(() => {
       <div class="reader-groups" aria-label="工具分组"><button v-for="name in ['阅读','批注','形状','插入']" :key="name" :aria-pressed="group === name" :class="{ selected: group === name }" @click="!editingBlocked() && (group = name)">{{ name }}</button></div>
       <div class="reader-actions">
         <el-tooltip :append-to="readerRoot" content="文献阅读助手" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="文献阅读助手" :aria-pressed="assistantOpen" @click="qaPanel?.toggle()"><Reading /></button></el-tooltip>
-        <el-tooltip :append-to="readerRoot" content="搜索文献" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="搜索文献" @click="openRight('搜索')"><Search /></button></el-tooltip>
-        <el-tooltip :append-to="readerRoot" content="批注列表" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="批注列表" @click="openRight('批注列表')"><ChatLineSquare /></button></el-tooltip>
+        <el-tooltip :append-to="readerRoot" content="搜索文献" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="搜索文献" @click="toggleRight('搜索')"><Search /></button></el-tooltip>
+        <el-tooltip :append-to="readerRoot" content="批注列表" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150" :popper-options="{ strategy: 'fixed' }"><button aria-label="批注列表" @click="toggleRight('批注列表')"><ChatLineSquare /></button></el-tooltip>
         <el-tooltip :append-to="readerRoot" :content="fullscreen?'退出全屏':'全屏阅读'" effect="light" popper-class="library-popover" :hide-after="100" :show-after="150"><button :aria-label="fullscreen?'退出全屏':'全屏阅读'" :aria-pressed="fullscreen" :disabled="fullscreenPending || fullscreenTransitioning" @click="toggleFullscreen"><component :is="fullscreen?FullscreenExitIcon:FullScreen" /></button></el-tooltip>
-        <button title="展开或收起翻译面板；实时模式展开后会继续翻译" aria-label="翻译面板" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="translationPanel?.toggle()">面板</button><button title="翻译当前 PDF 选区并展开面板，与面板内翻译按钮相同" aria-label="翻译所选文字" style="width:auto;min-width:44px;padding:4px 6px" :disabled="translationPanel?.busy" @pointerdown.prevent @click="translationPanel?.translate()">翻译</button>
-        <button aria-label="笔记面板" title="独立展开或收起文献笔记" :aria-pressed="notesOpen" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="notesPanel?.toggle()">笔记</button>
+        <button title="展开或收起翻译面板；关闭后再次翻译沿用原有请求流程" aria-label="翻译所选文字" :aria-pressed="translationOpen && !panelsHidden" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="toggleTranslation">翻译</button>
+        <button aria-label="笔记面板" title="独立展开或收起文献笔记" :aria-pressed="notesOpen && !panelsHidden" style="width:auto;min-width:44px;padding:4px 6px" @pointerdown.prevent @click="toggleNotes">笔记</button>
         <button aria-label="添加到笔记" title="保存可靠 PDF 选区到新笔记或已有笔记" style="width:auto;min-width:44px;padding:4px 6px" :disabled="!pdf || capturePreparing || !!captureDraft" @pointerdown.prevent @click="capturePdf">摘录</button>
+        <button aria-label="面板" title="隐藏或恢复搜索、批注、翻译和笔记面板" :aria-pressed="hasOpenPanels && !panelsHidden" style="width:auto;min-width:44px;padding:4px 6px" @click="togglePanels">面板</button>
         <PdfDownloadMenu :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" />
       </div>
     </div>
@@ -803,7 +833,7 @@ onBeforeUnmount(() => {
     <div v-if="annotations?.state.error" class="reader-notice annotation-error" role="alert">{{ annotations.state.error }}<button v-if="annotations.state.phase!=='conflict'" @click="annotations.retry">重试保存批注</button><button @click="annotations.exportDraft">导出批注草稿</button><button @click="reloadAnnotations">载入服务端批注并保留草稿备份</button><button @click="retainDraftAndReturn">保留批注草稿并返回文献库</button></div>
     <div v-if="notice" class="reader-notice" role="status">{{ notice }}<button aria-label="关闭提示" @click="notice = ''">×</button></div>
     <div v-if="pdf && ready && progress?.status.error" class="reader-notice" role="alert">{{ progress.status.error }}<div v-if="progress.status.conflict"><button @click="resolveProgress(false)">载入服务端进度</button><button @click="resolveProgress(true)">保存本地进度</button></div><button v-else :disabled="progress.status.saving" @click="progress.retry">重试阅读记录</button></div>
-    <div class="reader-body" :class="{ 'qa-open': assistantOpen }">
+    <div class="reader-body" :class="{ 'qa-open': assistantOpen, 'tools-open': rightOpen && !panelsHidden }">
       <ReaderPanel v-model:width="leftWidth" :resizable="true" :open="leftOpen" side="left" label="文献导航" @close="leftOpen = false"><div class="reader-panel-tabs"><button v-for="name in ['缩略图','大纲']" :key="name" :class="{ selected: leftPanel === name }" @click="leftPanel = name">{{ name }}</button></div><template v-if="pdf && leftOpen"><div v-if="leftPanel === '缩略图'" class="pdf-thumbnails"><PdfThumbnail v-for="number in count" :key="`${route.params.documentId}-${number}`" :pdf="pdf" :page-number="number" :current="current" @navigate="jump" /></div><template v-else><p v-if="outlineError || !outline.length" class="reader-panel-placeholder" role="status">{{ outlineError || '此 PDF 没有内置大纲' }}</p><PdfOutline v-else :key="String(route.params.documentId)" :items="outline" @navigate="navigateOutline" /></template></template></ReaderPanel>
       <div class="pdf-reading-region">
       <div v-if="showSaved" class="annotation-saved-toast" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#35a568"/><path d="m6.5 12 3.5 3.5 7.5-8" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>批注已保存</div>
@@ -818,8 +848,8 @@ onBeforeUnmount(() => {
       </div>
       <QaAssistantPanel ref="qaPanel" @update:open="assistantOpen = $event" />
       <button v-if="assistantOpen" type="button" class="qa-collapse" aria-label="收起阅读助手" title="收起阅读助手" @click="qaPanel?.toggle()"><ArrowRight /></button>
-      <ReaderPanel :open="rightOpen" side="right" :label="rightPanel" :fixed-content="rightPanel === '批注列表'" :non-modal="rightPanel==='批注列表'" @close="closeRight"><template #header-actions><PdfDownloadMenu v-if="rightPanel==='批注列表'" class="pdf-export-panel-menu" :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" /></template><PdfExportStatus v-if="pdf && rightPanel==='批注列表'" :phase="exportPhase" :error="exportError" :conflict="exportConflict" @resolve="resolveExportDraft" @start="startExport" @cancel="cancelExport" @retry="requestExport" @reload="reloadExportSnapshot" /><PdfSearch v-if="pdf" v-show="rightPanel === '搜索'" :key="String(route.params.documentId)" :pdf="pdf" :selected="selectedMatch" @matches="matches = $event; selectedMatch = ''" @navigate="navigateMatch" /><AnnotationList v-if="annotations" v-show="rightPanel === '批注列表'" :items="annotations.state.items" :editor="editor?.type==='comment' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" @draft="updateEditor" @save="saveEditor" @cancel="cancelEditor" :has-backup="annotations.state.hasBackup" :has-pending="annotations.state.dirty && !annotations.state.error" @save-pending="annotations.flush" @export-backup="annotations.exportDraft" :document-id="String(route.params.documentId)" :selected="selectedAnnotation" @select="navigateAnnotation" @edit="openEditor" @remove="removeAnnotation" /></ReaderPanel>
-      <section v-show="translationOpen || notesOpen" class="reader-extension-panels" :class="{ 'translation-open': translationOpen, 'notes-open': notesOpen }" aria-label="阅读扩展面板">
+      <ReaderPanel panel-class="reader-tool-panel" :open="rightOpen && !panelsHidden" side="right" :label="rightPanel" :fixed-content="rightPanel === '批注列表'" :non-modal="true" @close="closeRight"><template #header-actions><PdfDownloadMenu v-if="rightPanel==='批注列表'" class="pdf-export-panel-menu" :document-id="String(route.params.documentId)" :disabled="!pdf" :export-disabled="exportPhase==='running' || annotations?.state.phase==='loading'" @export="requestExport" /></template><PdfExportStatus v-if="pdf && rightPanel==='批注列表'" :phase="exportPhase" :error="exportError" :conflict="exportConflict" @resolve="resolveExportDraft" @start="startExport" @cancel="cancelExport" @retry="requestExport" @reload="reloadExportSnapshot" /><PdfSearch v-if="pdf" v-show="rightPanel === '搜索'" :key="String(route.params.documentId)" :pdf="pdf" :selected="selectedMatch" @matches="matches = $event; selectedMatch = ''" @navigate="navigateMatch" /><AnnotationList v-if="annotations" v-show="rightPanel === '批注列表'" :items="annotations.state.items" :editor="editor?.type==='comment' ? editor : null" :editor-locked="editorSubmitted" :editor-busy="editorBusy" @draft="updateEditor" @save="saveEditor" @cancel="cancelEditor" :has-backup="annotations.state.hasBackup" :has-pending="annotations.state.dirty && !annotations.state.error" @save-pending="annotations.flush" @export-backup="annotations.exportDraft" :document-id="String(route.params.documentId)" :selected="selectedAnnotation" @select="navigateAnnotation" @edit="openEditor" @remove="removeAnnotation" /></ReaderPanel>
+      <section v-show="!panelsHidden && (translationOpen || notesOpen)" class="reader-extension-panels" :class="{ 'translation-open': translationOpen, 'notes-open': notesOpen }" aria-label="阅读扩展面板">
         <TranslationPanel ref="translationPanel" @update:open="translationOpen = $event" @save-to-note="openCapture" />
         <NotesPanel ref="notesPanel" :document-id="String(route.params.documentId)" @update:open="notesOpen = $event" />
       </section>

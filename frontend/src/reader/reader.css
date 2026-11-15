@@ -225,3 +225,8 @@ aside.reader-panel-fixed, dialog.reader-panel-fixed[open] { display:flex }
 .reader-selection-toolbar .selection-quick-colors input[type=color] { width:24px; height:22px; padding:1px; border:1px solid var(--litera-border); background:white; cursor:pointer }
 
 .reader-selection-toolbar .selection-quick-colors button.reader-color { background:var(--swatch); padding:0 }
+
+/* Keep panel toggles reachable while the narrow nonmodal tool sidebar is open. */
+@media(max-width:1099px) {
+  .reader-workspace:has(.reader-tool-panel[open]) .reader-main-toolbar { position:relative; z-index:14; background:var(--litera-card); }
+}

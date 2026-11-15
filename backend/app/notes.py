@@ -14,6 +14,8 @@ from .documents import iso, owned_document, reject
 from .models import Document, LoginSession, Note, NoteDocument
 from .schemas import InputModel
 
+from .note_titles import lock_note_writes, require_unique_title
+
 TITLE_LIMIT = 200
 CONTENT_LIMIT = 100000
 SEARCH_QUERY_LIMIT = 100
@@ -234,6 +236,7 @@ def create_note_router(current_session, require_csrf):
     @router.post('',status_code=201)
     def creating(payload: NoteCreate, response: Response, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
         ready(db)
+        lock_note_writes(db, session.user_id)
         if payload.documentId: owned_document(db,session.user_id,payload.documentId,lock=True)
         def replay(item):
             if item.owner_id != session.user_id: reject(404,"NOTE_NOT_FOUND","笔记不存在或不可访问")
@@ -243,6 +246,7 @@ def create_note_router(current_session, require_csrf):
             response.status_code=200;return dto(db,item,True)
         item=db.get(Note,payload.id)
         if item is not None:return replay(item)
+        require_unique_title(db, session.user_id, payload.title, [payload.documentId] if payload.documentId else [])
         timestamp=now()
         item=Note(id=payload.id,owner_id=session.user_id,title=payload.title,content=payload.content,content_format='plain-text',
                   version=1,source_schema_version=1,sources=[],created_at=timestamp,updated_at=timestamp)
@@ -260,10 +264,13 @@ def create_note_router(current_session, require_csrf):
 
     @router.patch('/{id}')
     def editing(id: str, payload: NotePatch, session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
-        ready(db);item=owned_note(db,session.user_id,id)
+        ready(db);lock_note_writes(db, session.user_id);item=owned_note(db,session.user_id,id)
         values=payload.model_dump(exclude_unset=True,exclude={'version'})
         def exact(current):return all(getattr(current,k)==v for k,v in values.items())
         if payload.version<=item.version and exact(item):return dto(db,item,True)
+        if 'title' in values:
+            linked = db.scalars(select(NoteDocument.document_id).where(NoteDocument.note_id == id).with_for_update()).all()
+            require_unique_title(db, session.user_id, values['title'], linked, id)
         result=db.execute(update(Note).where(Note.id==id,Note.owner_id==session.user_id,Note.version==payload.version)
                           .values(**values,version=Note.version+1,updated_at=now()))
         if result.rowcount!=1:
@@ -275,7 +282,7 @@ def create_note_router(current_session, require_csrf):
 
     @router.delete('/{id}',status_code=204)
     def removing(id: str, version: int = Query(ge=1), session: LoginSession = Depends(require_csrf), db: Session = Depends(get_db)):
-        ready(db);owned_note(db,session.user_id,id)
+        ready(db);lock_note_writes(db, session.user_id);owned_note(db,session.user_id,id)
         result=db.execute(delete(Note).where(Note.id==id,Note.owner_id==session.user_id,Note.version==version))
         if result.rowcount!=1:
             db.rollback();owned_note(db,session.user_id,id)
@@ -284,6 +291,7 @@ def create_note_router(current_session, require_csrf):
 
     def relationship(id, documentId, session, db, add):
         ready(db)
+        lock_note_writes(db, session.user_id)
         # Existing document writes take this lock first; match that order on MySQL.
         owned_document(db,session.user_id,documentId,lock=True)
         item=owned_note(db,session.user_id,id,lock=True)
@@ -294,6 +302,7 @@ def create_note_router(current_session, require_csrf):
             db.rollback();reject(404,"NOTE_NOT_FOUND","笔记不存在或不可访问")
         link=db.get(NoteDocument,(id,documentId))
         if add and link is None:
+            require_unique_title(db, session.user_id, item.title, [documentId], id)
             db.add(NoteDocument(note_id=id,document_id=documentId,owner_id=session.user_id,created_at=now()))
         elif not add and link is not None:db.delete(link)
         try:db.commit()
