@@ -95,16 +95,20 @@ class DocumentPatch(InputModel):
 def iso(value):
     return value.replace(tzinfo=timezone.utc).isoformat() if value else None
 
-def document_dto(doc, attachment, db=None):
-    tags = db.scalars(select(Tag).join(DocumentTag, DocumentTag.tag_id == Tag.id).where(
-        DocumentTag.document_id == doc.id, DocumentTag.owner_id == doc.owner_id,
-        Tag.owner_id == doc.owner_id).order_by(Tag.name, Tag.id)).all() if db else []
-    job = db.scalar(select(CleanupJob).where(CleanupJob.id == doc.purge_job_id, CleanupJob.owner_id == doc.owner_id)) if db and doc.purge_job_id else None
+_PRELOAD_UNSET = object()
+
+def document_dto(doc, attachment, db=None, tags=_PRELOAD_UNSET, cleanup_job=_PRELOAD_UNSET):
+    if tags is _PRELOAD_UNSET:
+        tags = db.scalars(select(Tag).join(DocumentTag, DocumentTag.tag_id == Tag.id).where(
+            DocumentTag.document_id == doc.id, DocumentTag.owner_id == doc.owner_id,
+            Tag.owner_id == doc.owner_id).order_by(Tag.name, Tag.id)).all() if db else []
+    if cleanup_job is _PRELOAD_UNSET:
+        cleanup_job = db.scalar(select(CleanupJob).where(CleanupJob.id == doc.purge_job_id, CleanupJob.owner_id == doc.owner_id)) if db and doc.purge_job_id else None
     return {
         "id": doc.id, "title": doc.title, "authors": doc.authors, "abstract": doc.abstract,
         "keywords": doc.keywords, "year": doc.year, "journal": doc.journal, "doi": doc.doi,
         "folderId": doc.folder_id, "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in tags],
-        "cleanupJob": {"jobId": job.id, "status": job.status, "errorCode": job.error_code} if job else None,
+        "cleanupJob": {"jobId": cleanup_job.id, "status": cleanup_job.status, "errorCode": cleanup_job.error_code} if cleanup_job else None,
         "attachment": {"originalName": attachment.original_name, "sizeBytes": attachment.size_bytes,
                        "mimeType": attachment.mime_type, "sha256": attachment.sha256},
         "parseStatus": doc.parse_status, "extractionVersion": doc.extraction_version,

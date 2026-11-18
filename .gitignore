@@ -34,3 +34,6 @@
 *.sqlite-*
 *.sqlite3-*
 *.log
+**/.coverage
+reports/pytest-unit.xml
+reports/apitest-*.json

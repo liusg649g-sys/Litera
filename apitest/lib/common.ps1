@@ -20,14 +20,32 @@ function Get-Config {
 
 function Invoke-Curl {
     param([string[]]$CurlArgs)
-    $out = (& curl.exe -s -w "`n%{http_code}" @CurlArgs 2>&1 | Out-String) -replace "`r", ""
-    $out = $out.TrimEnd("`n")
-    $idx = $out.LastIndexOf("`n")
-    if ($idx -lt 0) { return @{ Status = 0; Text = $out } }
-    $status = 0
-    [int]::TryParse($out.Substring($idx + 1).Trim(), [ref]$status) | Out-Null
-    $text = $out.Substring(0, $idx)
-    return @{ Status = $status; Text = $text }
+    # Callers that pass -o already control the body file; only the status is needed.
+    if ($CurlArgs -contains '-o') {
+        $out = (& curl.exe -s -w "`n%{http_code}" @CurlArgs 2>&1 | Out-String) -replace "`r", ""
+        $out = $out.TrimEnd("`n")
+        $idx = $out.LastIndexOf("`n")
+        if ($idx -lt 0) { return @{ Status = 0; Text = $out } }
+        $status = 0
+        [int]::TryParse($out.Substring($idx + 1).Trim(), [ref]$status) | Out-Null
+        return @{ Status = $status; Text = '' }
+    }
+    # Read the body from a file as UTF-8. Piping curl.exe output through
+    # Windows PowerShell 5.1 decodes it with the console code page and turns
+    # Chinese JSON into mojibake, which then breaks ConvertFrom-Json.
+    $bodyFile = Join-Path $env:TEMP ("apitest-resp-" + [guid]::NewGuid().ToString('N') + '.txt')
+    try {
+        $out = (& curl.exe -s -o $bodyFile -w "%{http_code}" @CurlArgs 2>&1 | Out-String) -replace "`r", ""
+        $status = 0
+        [int]::TryParse($out.Trim(), [ref]$status) | Out-Null
+        $text = ''
+        if (Test-Path $bodyFile) {
+            $text = [System.IO.File]::ReadAllText($bodyFile, [System.Text.Encoding]::UTF8)
+        }
+        return @{ Status = $status; Text = $text }
+    } finally {
+        Remove-Item $bodyFile -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Send-Json {

@@ -128,10 +128,29 @@ def document_page(db, owner, request, page, size, sort="createdAt", order="desc"
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     rows = db.execute(query.order_by(column.is_(None), column.asc() if order == "asc" else column.desc(), Document.id)
         .offset((page - 1) * size).limit(size)).all()
-    items = [document_dto(doc, file, db) for doc, file in rows]
+    doc_ids = [doc.id for doc, _ in rows]
+    tags_by_doc = {}
+    if doc_ids:
+        for doc_id, tag in db.execute(select(DocumentTag.document_id, Tag).join(
+                Tag, Tag.id == DocumentTag.tag_id).where(
+                DocumentTag.document_id.in_(doc_ids), DocumentTag.owner_id == owner,
+                Tag.owner_id == owner).order_by(DocumentTag.document_id, Tag.name, Tag.id)).all():
+            tags_by_doc.setdefault(doc_id, []).append(tag)
+    purge_ids = {doc.purge_job_id for doc, _ in rows if doc.purge_job_id}
+    jobs_by_id = {}
+    if purge_ids:
+        for job in db.scalars(select(CleanupJob).where(
+                CleanupJob.id.in_(purge_ids), CleanupJob.owner_id == owner)).all():
+            jobs_by_id[job.id] = job
+    items = [document_dto(doc, file, None, tags=tags_by_doc.get(doc.id, []),
+                          cleanup_job=jobs_by_id.get(doc.purge_job_id)) for doc, file in rows]
     if mode == "recent":
-        items = [{"document": item, "progress": progress_dto(db.scalar(select(ReadingProgress).where(
-            ReadingProgress.document_id == item["id"], ReadingProgress.owner_id == owner)), item["id"])} for item in items]
+        progress_by_doc = {}
+        if doc_ids:
+            for progress in db.scalars(select(ReadingProgress).where(
+                    ReadingProgress.document_id.in_(doc_ids), ReadingProgress.owner_id == owner)).all():
+                progress_by_doc[progress.document_id] = progress
+        items = [{"document": item, "progress": progress_dto(progress_by_doc.get(item["id"]), item["id"])} for item in items]
     return {"items": items, "page": page, "pageSize": size, "total": total}
 
 def progress_dto(item, id):

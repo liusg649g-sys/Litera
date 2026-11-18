@@ -1,11 +1,19 @@
 .PHONY: check-security check
 
-# 覆盖 SEC-05（密钥扫描）与 SEC-06（依赖审计）；无 make 环境时可直接执行：
-#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1
+COVERAGE_MIN ?= 80
+
+# Security gate: SEC-05 secrets + SEC-06 dependency audit + SEC-07 escaping
+# + SEC-02/03/INJ dynamic counter-examples.
+# Exit 1 = FAIL, 2 = BLOCKED (stack/credentials missing), 0 = PASS.
+# Without make: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1
 check-security:
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1
 
-# 业务验收跑批：黑盒打真实 Compose 服务（需先配置 apitest/config.local.ps1 或 APITEST_* 环境变量）
-#   make check FILTER=docs-*   只跑某组
+# Non-security gate: 接口入口 / 业务逻辑 / 数据库 / 公共函数 / 错误处理 / 性能.
+# Runs isolated SQLite unit/migration/query/audit tests first, then the real
+# Compose apitest suite when the stack is reachable.
+#   make check FILTER=docs-*       只跑某组接口用例（隔离测试仍全量）
+#   make check COVERAGE_MIN=75     临时放宽覆盖率门禁（需在报告中说明）
+# Exit 1 = FAIL, 2 = BLOCKED, 0 = PASS.
 check:
-	powershell -NoProfile -ExecutionPolicy Bypass -File apitest/run_checks.ps1 -Filter "$(FILTER)"
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_all.ps1 -Filter "$(FILTER)" -CoverageMin $(COVERAGE_MIN)

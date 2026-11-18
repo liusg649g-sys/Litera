@@ -101,14 +101,16 @@ def owned_note(db, owner, id, lock=False):
     return item
 
 
-def dto(db, item, detail=False):
-    documents = db.execute(select(Document.id, Document.title).join(NoteDocument, NoteDocument.document_id == Document.id)
-        .where(NoteDocument.note_id == item.id, NoteDocument.owner_id == item.owner_id,
-               Document.owner_id == item.owner_id, Document.deleted_at.is_(None), Document.purge_job_id.is_(None))
-        .order_by(Document.title, Document.id)).all()
+def dto(db, item, detail=False, documents=None):
+    if documents is None:
+        documents = [{"id":row.id,"title":row.title} for row in db.execute(
+            select(Document.id, Document.title).join(NoteDocument, NoteDocument.document_id == Document.id)
+            .where(NoteDocument.note_id == item.id, NoteDocument.owner_id == item.owner_id,
+                   Document.owner_id == item.owner_id, Document.deleted_at.is_(None), Document.purge_job_id.is_(None))
+            .order_by(Document.title, Document.id)).all()]
     result = {"id":item.id,"title":item.title,"contentFormat":item.content_format,"version":item.version,
               "sourceSchemaVersion":item.source_schema_version,"createdAt":iso(item.created_at),"updatedAt":iso(item.updated_at),
-              "documents":[{"id":row.id,"title":row.title} for row in documents]}
+              "documents":documents}
     if detail: result.update(content=item.content,sources=item.sources)
     return result
 
@@ -227,7 +229,18 @@ def create_note_router(current_session, require_csrf):
             query=query.where(func.lower(Note.title).contains(title.strip().lower(),autoescape=True))
         total=db.scalar(select(func.count()).select_from(query.subquery()))
         rows=db.scalars(query.order_by(Note.updated_at.desc(),Note.id).offset((page-1)*pageSize).limit(pageSize)).all()
-        return {"items":[dto(db,item) for item in rows],"page":page,"pageSize":pageSize,"total":total}
+        documents_by_note={}
+        note_ids=[item.id for item in rows]
+        if note_ids:
+            for note_id,document_id,title in db.execute(select(NoteDocument.note_id,Document.id,Document.title)
+                    .join(Document,Document.id==NoteDocument.document_id)
+                    .where(NoteDocument.note_id.in_(note_ids),NoteDocument.owner_id==session.user_id,
+                           Document.owner_id==session.user_id,Document.deleted_at.is_(None),
+                           Document.purge_job_id.is_(None))
+                    .order_by(NoteDocument.note_id,Document.title,Document.id)).all():
+                documents_by_note.setdefault(note_id,[]).append({"id":document_id,"title":title})
+        return {"items":[dto(db,item,documents=documents_by_note.get(item.id,[])) for item in rows],
+                "page":page,"pageSize":pageSize,"total":total}
 
     @router.get('/{id}')
     def details(id: str, session: LoginSession = Depends(current_session), db: Session = Depends(get_db)):

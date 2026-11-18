@@ -17,6 +17,7 @@ $p95 = $sorted[[Math]::Min(18, $sorted.Count - 1)]
 $max = $sorted[-1]
 Write-Host ("  timings: P50={0:n3}s P95={1:n3}s MAX={2:n3}s" -f $sorted[9], $p95, $max)
 Check-True 'P95 <= 0.5s (async submit does not wait for LLM)' ($p95 -le 0.5) ("P95={0:n3}s" -f $p95)
+Check-True 'MAX <= 2.0s (layer-3 lower bound)' ($max -le 2.0) ("MAX={0:n3}s" -f $max)
 $left = Wait-AllSettled $c $ids 300
 Check 'queue drains to completed/failed' $left 0
 foreach ($id in $ids) { Remove-Doc $c $id }

@@ -89,15 +89,24 @@ pip  25.0.1  PYSEC-2026-3721  26.2
   1. 构建期只执行 `pip install --no-cache-dir -r requirements.txt`，依赖清单完全由我们手写的 requirements.txt 控制，不接受运行时动态 pip install。
   2. 基础镜像锁定 `public.ecr.aws/docker/library/python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b`（Compose 中未覆盖，但 Dockerfile FROM 未漂移），换基础镜像时 pip 版本自动更新。
   3. 升级责任归属基础镜像维护者（Debian/Ubuntu + PyPA），不在本项目代码改一行能解决；硬要升级需在 Dockerfile 加 `RUN pip install --upgrade pip`，引入构建时网络请求+版本漂移风险，收益为零。
-  4. `make check-security` 脚本已识别 pip-audit 输出中的 pip 通报，打 WARNING 不阻断退出码 0；如需零通报需单独排除 pip（`pip_audit --skip pip`），此处选择保留原始输出让基线可查。
+  4. `make check-security` 脚本已识别 pip-audit 输出中的 pip 通报：仅构建期 pip 时以 PASS + 说明记录，运行期依赖漏洞则 FAIL 退出 1；如需零通报需单独排除 pip（`pip_audit --skip pip`），此处选择保留原始输出让基线可查。
 - **处置类型**：**已登记，不升级**（构建期工具，不在运行期攻击面）
 - **复查命令**：`docker compose exec -T api sh -c "python -m pip_audit --progress-spinner off" 2>&1 | Select-String 'pip|Found'`
 
 SEC-06 当前判定：**绿**（运行期依赖全部清零；pip 作为构建期工具登记处置，不构成运行风险）。
 
+### 2026-11-18 复核
+
+pip-audit 新增两条运行期通报：dnspython 2.9.0（CVE-2026-128089，修复 2.9.2）、
+opentelemetry-api 1.45.1（CVE-2026-126360，修复 1.45.2）。已在 `backend/requirements.txt`
+升级到 2.9.2 / 1.45.2，重建 api 与 extraction-worker 后复核：运行期通报清零，剩余 12 行
+均为构建期 pip。
+
 ## 一键入口
 
-`make check-security` 已接入仓库根 Makefile，覆盖 SEC-05 与 SEC-06；无 make 环境直接执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1`。入口已在 README.md 注明。
+`make check-security` 已接入仓库根 Makefile，覆盖 SEC-05 密钥、SEC-06 依赖审计、SEC-07 前端转义，
+以及 `sec03` / `inj01`～`inj03` / `qa-injection` 动态反例；无 make 环境直接执行
+`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1`。入口已在 README.md 注明。
 
 2026-11-04 首跑真实输出（退出码 0）：
 

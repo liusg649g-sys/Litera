@@ -228,7 +228,7 @@ def test_upgrade_from_auth_preserves_user(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with isolated.connect() as conn:
         assert conn.execute(text("SELECT display_name FROM users WHERE id='existing'")).scalar() == "Existing"
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0010_qa_answers_indexes_vectors"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0013_index_alignment"
     isolated.dispose()
 
 @pytest.mark.parametrize("microseconds,stored_second", [(123456, 6), (654321, 7)])

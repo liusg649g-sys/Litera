@@ -21,7 +21,7 @@ FRONT_HOST,FRONT_PORT='127.0.0.3',5183
 API_PORT=FRONT_PORT
 ORIGIN=API=f'http://{FRONT_HOST}:{FRONT_PORT}'
 HTTP=urllib.request.build_opener(urllib.request.ProxyHandler({}))
-HEAD='0010_qa_answers_indexes_vectors'
+HEAD='0013_index_alignment'
 PID_FILE=DATA/'processes.json'
 
 

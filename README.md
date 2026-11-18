@@ -122,21 +122,37 @@ docker compose exec -T api python -m pytest -q
 
 题录异步队列的三条验收判据与回归用例在 `backend/tests/test_metadata_extraction_async.py`（P95 响应时间、worker 停止不丢任务、重复提交幂等、上传响应 parseStatus 回归）。运行需先把测试 PDF 语料放入 `backend/tests/fixtures/pdfs/`；判据二/三需宿主机 Docker CLI，详见文件头注释。
 
-安全检查一键入口（覆盖 SEC-05 密钥扫描与 SEC-06 依赖审计）：
+安全检查一键入口（SEC-05 密钥、SEC-06 依赖审计、SEC-07 前端转义，以及越权/注入/CSRF/提示词注入反例）：
 
 ```cmd
 make check-security
 ```
 
-无 make 环境时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1`。发现明文密钥以退出码 1 失败；依赖通报按 reports/security-baseline.md 的登记处置打 WARNING，基线与首跑输出见该文件。
+无 make 环境时执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_security.ps1`。发现明文密钥或运行时依赖漏洞以退出码 1 失败；仅 build-time pip 通报按 reports/security-baseline.md 登记处置；Compose 或凭据缺失时输出 BLOCKED 并退出 2，不冒充通过。
 
-业务验收跑批（黑盒打真实 Compose 服务，用例即脚本）：
+其余六类核查一键入口：
 
 ```cmd
 make check
 ```
 
-用例在 `apitest/cases/`（auth/docs/anno/extr/trans/notes/qa/x 八组），需先在 `apitest/config.local.ps1`（已 gitignore）填测试账号；输出汇总 GREEN/RED/SKIP 并落盘 `apitest/reports/`。详见 [apitest/README.md](apitest/README.md)。
+| 类别 | 检查内容 | 实现 |
+| --- | --- | --- |
+| 接口入口 | 参数校验、状态码、错误返回 | `apitest/cases/` 接口用例 + 断言 |
+| 业务逻辑 | 场景与状态流转 | `scripts/check_scenarios.py` 追溯 + apitest 场景用例 |
+| 数据库 | 迁移链、重复 head、索引、回滚保护 | `backend/tests/test_migrations_gate.py` |
+| 公共函数 | 边界值、空值、分支 | `pytest` 单元测试 + 覆盖率门禁（默认 80%） |
+| 错误处理 | 错误码、降级、审计结果 | `test_audit_outcomes.py` + 故障注入用例 |
+| 性能 | N+1、慢语句、并发提交 | `test_query_performance.py` + `extr-p95-concurrency` 阈值 |
+
+首次运行前准备隔离测试环境（`backend/.venv` 已在 gitignore）：
+
+```cmd
+python -m venv backend\.venv
+backend\.venv\Scripts\pip install -r backend\requirements-dev.txt
+```
+
+退出码：0 通过、1 失败、2 有未执行项（服务/凭据未就绪）。隔离测试先跑；Compose 可达时再跑真实接口用例；汇总落盘 `reports/check-all-*.log`，性能基线见 [reports/bench.md](reports/bench.md)。接口用例在 `apitest/cases/`，需先在 `apitest/config.local.ps1`（已 gitignore）填测试账号；详见 [apitest/README.md](apitest/README.md)。
 
 测试会清理目标测试库中的数据，运行前须核对实例及数据库隔离；代码校验数据库名并拒绝非litera_test库。初次MySQL初始化会创建测试库；旧卷缺少测试库时见[测试库说明](docs/development/p2-b.md)。SQLite结果不能替代真实MySQL验证。
 

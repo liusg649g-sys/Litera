@@ -14,12 +14,12 @@
 ## 跑法
 
 ```powershell
-make check                 # 全部用例
-make check FILTER=docs-*   # 只跑某组
+make check                 # 六类非安全门禁（含本套接口用例）
+make check FILTER=docs-*   # 只跑某组接口用例（隔离测试仍全量）
 ```
 
-等价于 `powershell -NoProfile -ExecutionPolicy Bypass -File apitest/run_checks.ps1 [-Filter <glob>]`。
-汇总行 `GREEN n / RED n / SKIP n`；有 RED 退出码为 1。每次跑批输出落盘 `apitest/reports/check-<时间戳>.log`。
+等价于 `powershell -NoProfile -ExecutionPolicy Bypass -File apitest/run_checks.ps1 [-Filter <glob>] [-ExcludeSecurity]`。
+汇总行 `GREEN n / RED n / SKIP n`；有 RED 退出码为 1。每次跑批输出落盘 `apitest/reports/check-<时间戳>.log`，同时写 `apitest/reports/last-run.json` 供 `scripts/check_all.ps1` 按类别汇总。安全反例由 `make check-security` 单独执行，不在 `make check` 中重复。
 
 ## 目录
 

@@ -30,6 +30,26 @@
 - 保留已有未提交改动和其他成员成果。默认不执行 commit、push、迁移既有业务库、删除卷或覆盖恢复；是否执行具体动作以用户授权为准。
 - 八类规范按索引顺序1–8维护，同学文档沿用其职责边界；共享内容引用原规范，不另立替代版本。
 
+## 3 AI 生成代码核查清单
+
+每次 AI 生成或修改代码后，按七类逐项核查。检查手段固定为脚本入口或明确的人工评审，不以“已检查”口头结论代替。
+
+| 类 | 核查问题 | 检查手段 |
+| --- | --- | --- |
+| 接口入口 | 参数校验、状态码、统一 error 包络是否齐 | `apitest/cases/` 接口用例 + 参数断言（未登录 401、跨用户 404、非法参数 400/422） |
+| 业务逻辑 | 状态流转与分支是否符合规约场景 | AI 自审对照 `openspec/changes/*/specs/*/spec.md` + `scripts/check_scenarios.py` 追溯 + 场景用例 |
+| 数据库 | 迁移可执行、事务边界、索引是否齐 | `backend/tests/test_migrations_gate.py`（迁移链、重复 head、索引、回滚保护）+ 既有迁移用例 + 事务记录 |
+| 公共函数 | 空值、边界与异常路径是否处理 | `backend/tests/` 单元测试 + `pytest-cov` 覆盖率门禁（默认 80%） |
+| 错误处理 | 错误码、重试与降级路径是否完整 | `test_audit_outcomes.py` 核对 success/failed/denied + 故障注入用例 |
+| 安全 | 越权、注入、密钥与依赖 | `make check-security`（SEC-05/06/07）+ `sec03`、`inj01`～`inj03`、`qa-injection` 反例 |
+| 性能 | N+1、慢语句、重复投递与并发提交 | `test_query_performance.py` + `extr-p95-concurrency.ps1` 阈值 + `reports/bench.md` |
+
+### 命名与提交约定
+
+- 命名沿用现有物理目录与 `/api/v1` 契约：Python 用 snake_case，类用 PascalCase；Vue 组件用 PascalCase，组合式函数用 `useXxx`；数据库表/列用 snake_case；测试文件用 `test_*.py`，接口用例用 `<分组>-<场景>.ps1`。
+- 提交信息用 `<type>: <summary>`，`type` 取 `feat`、`fix`、`docs`、`test`、`refactor`、`chore`；一次提交只做一件事，涉及场景或门禁时在正文注明用例/场景编号。
+- 不提交 `.env`、密钥、业务库、卷、生成缓存和本地报告；失败、跳过和未执行项必须如实写明，不冒充通过。
+
 ## 门禁与完成声明
 
 按8-评审规范选择适用检查：场景满足、检查通过、文档同步、证据可检索；用户可见行为另需明确验收。跳过/未测/Mock/SQLite不能冒充已通过的真实环境验证；超时不算批准。数据变更遵守7-数据规范的隔离和回退保护，不把无条件downgrade当必跑命令。

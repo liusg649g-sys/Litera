@@ -1,0 +1,20 @@
+{
+  "environment": {
+    "database": "temporary SQLite",
+    "rows": 50
+  },
+  "thresholds": {
+    "maxSelects": 12,
+    "maxStatementMs": 100
+  },
+  "documents": {
+    "selectCount": 4,
+    "maxMs": 1.846,
+    "p95Ms": 1.846
+  },
+  "notes": {
+    "selectCount": 4,
+    "maxMs": 1.171,
+    "p95Ms": 1.171
+  }
+}

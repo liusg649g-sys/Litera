@@ -15,12 +15,14 @@
 
 | 检查 | 实际入口与前提 |
 | --- | --- |
+| 六类非安全门禁 | 根目录`make check`：接口入口、业务逻辑、数据库、公共函数、错误处理、性能；先准备backend/.venv（fastapi/pytest/pytest-cov）并启动Compose |
+| 安全门禁 | 根目录`make check-security`：SEC-05密钥、SEC-06依赖审计、SEC-07前端转义、越权/注入/CSRF/提示词注入反例 |
 | 基础后端 | backend目录python -m pytest -q；先明确清空TEST_DATABASE_URL并核对conftest使用临时SQLite/PDF，不默认继承共享测试库配置 |
 | 前端单测/类型构建 | frontend目录npm test、npm run build；先安装锁定依赖，build包含vue-tsc |
 | 文献库/阅读器 | frontend目录npm run test:library、npm run test:reader；先核对测试Python路径和临时API端口 |
 | 翻译/笔记/个人模型 | 仅对应代码/config已存在时，用根目录python scripts/verify_delivery.py backend/frontend/build/browser等分层入口；每次只选一个scope，详细前提见8-评审规范第3节 |
 
-README提供入口索引；当前没有覆盖全部层次的单一自动门禁，属于待建设。常规前端报告为终端结果，Playwright按config输出test-results；verify_delivery在.cache/github-delivery留日志/JUnit，不能一概声称每个命令生成同一报告。健康检查用例核对test_auth及集成场景，不能只以页面可见证明API可用。
+`make check`与`make check-security`退出码为0通过、1失败、2有未执行项（服务/凭据/依赖缺失），2不等于通过。两者覆盖后端与接口层；前端Vitest/Playwright仍按上表单独执行。汇总落盘reports/check-all-*.log、scenario-coverage.md、query-performance.json和bench.md。前端报告为终端结果，Playwright按config输出test-results；verify_delivery在.cache/github-delivery留日志/JUnit，不能一概声称每个命令生成同一报告。健康检查用例核对test_auth及集成场景，不能只以页面可见证明API可用。
 
 ## 1. 目的与适用范围
 

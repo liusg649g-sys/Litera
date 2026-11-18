@@ -19,7 +19,7 @@ def upgrade():
         sa.Column('next_retry_at', sa.DateTime(timezone=False), nullable=True))
     # Backfill existing queued/processing rows with NOW() so the new worker picks
     # them up immediately; completed/failed rows get NULL (never re-queue from scan).
-    op.execute("UPDATE extraction_jobs SET next_retry_at = NOW() "
+    op.execute("UPDATE extraction_jobs SET next_retry_at = CURRENT_TIMESTAMP "
                "WHERE status IN ('queued', 'processing')")
     op.execute("UPDATE extraction_jobs SET next_retry_at = NULL "
                "WHERE status IN ('completed', 'failed')")
